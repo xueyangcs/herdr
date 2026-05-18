@@ -162,6 +162,8 @@ impl App {
                 SettingsAction::SaveAgentBorderLabels(enabled) => {
                     self.save_agent_border_labels(enabled)
                 }
+                SettingsAction::SaveServerEnabled(enabled) => self.save_ws_server_enabled(enabled),
+                SettingsAction::SaveServerPort(port) => self.save_ws_server_port(port),
             }
         }
         if self.state.agent_panel_scope != previous_agent_panel_scope {

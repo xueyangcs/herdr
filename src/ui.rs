@@ -48,7 +48,9 @@ use self::status::{render_config_diagnostic, render_toast_notification, toast_no
 use self::tabs::render_tab_bar;
 pub(crate) use self::{
     dialogs::{confirm_close_button_rects, confirm_close_popup_rect, rename_button_rects},
-    settings::settings_button_rects,
+    settings::{
+        settings_button_rects, SERVER_PORT_PRESETS, SERVER_TOGGLE_OFF_IDX, SERVER_TOGGLE_ON_IDX,
+    },
     sidebar::{
         agent_panel_body_rect, agent_panel_entries, agent_panel_scroll_metrics,
         agent_panel_scrollbar_rect, agent_panel_toggle_rect, collapsed_sidebar_sections,

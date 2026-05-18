@@ -411,6 +411,7 @@ impl App {
             sound: config.ui.sound.clone(),
             local_sound_playback: true,
             toast_config: config.ui.toast.clone(),
+            server_config: config.server.clone(),
             keybinds: config.keybinds(),
             spinner_tick: 0,
             palette: resolve_palette(config),
@@ -805,6 +806,10 @@ impl App {
 
         if !invalid_section("advanced") {
             self.state.pane_scrollback_limit_bytes = config.advanced.scrollback_limit_bytes;
+        }
+
+        if !invalid_section("server") {
+            self.state.server_config = config.server.clone();
         }
 
         if !invalid_section("theme") {

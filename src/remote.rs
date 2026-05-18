@@ -24,7 +24,42 @@ pub(crate) const REATTACH_COMMAND_ENV_VAR: &str = "HERDR_REATTACH_COMMAND";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RemoteLaunch {
+    /// SSH target (e.g. `user@host`) or WebSocket URL (e.g. `ws://host:8080`).
     pub(crate) target: String,
+    /// Present when `--remote` was given a WebSocket URL.
+    pub(crate) ws: Option<WsLaunchConfig>,
+}
+
+/// Extra flags that apply only when `--remote` is a WebSocket URL.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct WsLaunchConfig {
+    /// Bearer password (`--ws-password`).
+    pub(crate) password: Option<String>,
+    /// Expected TLS cert fingerprint (`--ws-fingerprint`).
+    pub(crate) fingerprint: Option<String>,
+    /// Use SSH public-key challenge-response (`--ws-pubkey-auth`).
+    pub(crate) pubkey_auth: bool,
+    /// SSH private key path (`--ws-identity`).
+    pub(crate) identity_file: Option<String>,
+}
+
+/// Returns true when the target string is a WebSocket / HTTP URL.
+fn is_ws_target(target: &str) -> bool {
+    target.starts_with("ws://")
+        || target.starts_with("wss://")
+        || target.starts_with("http://")
+        || target.starts_with("https://")
+}
+
+/// Normalize `http://` → `ws://` and `https://` → `wss://`.
+fn normalize_ws_url(target: &str) -> String {
+    if let Some(rest) = target.strip_prefix("http://") {
+        return format!("ws://{rest}");
+    }
+    if let Some(rest) = target.strip_prefix("https://") {
+        return format!("wss://{rest}");
+    }
+    target.to_string()
 }
 
 pub(crate) fn extract_remote_args(
@@ -35,10 +70,14 @@ pub(crate) fn extract_remote_args(
         cleaned.push(program.clone());
     }
 
-    let mut remote = None;
+    let mut remote: Option<RemoteLaunch> = None;
+    let mut ws_cfg = WsLaunchConfig::default();
     let mut index = 1;
+
     while index < args.len() {
         let arg = &args[index];
+
+        // --remote <target>
         if arg == "--remote" {
             if remote.is_some() {
                 return Err("--remote can only be specified once".to_string());
@@ -46,8 +85,11 @@ pub(crate) fn extract_remote_args(
             let Some(value) = args.get(index + 1) else {
                 return Err("missing value for --remote".to_string());
             };
+            let target = validate_remote_target(value)?.to_owned();
+            let normalized = normalize_ws_url(&target);
             remote = Some(RemoteLaunch {
-                target: validate_remote_target(value)?.to_owned(),
+                target: normalized,
+                ws: None,
             });
             index += 2;
             continue;
@@ -56,15 +98,74 @@ pub(crate) fn extract_remote_args(
             if remote.is_some() {
                 return Err("--remote can only be specified once".to_string());
             }
+            let target = validate_remote_target(value)?.to_owned();
+            let normalized = normalize_ws_url(&target);
             remote = Some(RemoteLaunch {
-                target: validate_remote_target(value)?.to_owned(),
+                target: normalized,
+                ws: None,
             });
+            index += 1;
+            continue;
+        }
+
+        // WS-specific flags (consumed here, not passed to herdr client)
+        if arg == "--ws-password" {
+            ws_cfg.password = Some(
+                args.get(index + 1)
+                    .ok_or("--ws-password requires a value")?
+                    .clone(),
+            );
+            index += 2;
+            continue;
+        }
+        if let Some(v) = arg.strip_prefix("--ws-password=") {
+            ws_cfg.password = Some(v.to_string());
+            index += 1;
+            continue;
+        }
+        if arg == "--ws-fingerprint" {
+            ws_cfg.fingerprint = Some(
+                args.get(index + 1)
+                    .ok_or("--ws-fingerprint requires a value")?
+                    .clone(),
+            );
+            index += 2;
+            continue;
+        }
+        if let Some(v) = arg.strip_prefix("--ws-fingerprint=") {
+            ws_cfg.fingerprint = Some(v.to_string());
+            index += 1;
+            continue;
+        }
+        if arg == "--ws-pubkey-auth" {
+            ws_cfg.pubkey_auth = true;
+            index += 1;
+            continue;
+        }
+        if arg == "--ws-identity" {
+            ws_cfg.identity_file = Some(
+                args.get(index + 1)
+                    .ok_or("--ws-identity requires a value")?
+                    .clone(),
+            );
+            index += 2;
+            continue;
+        }
+        if let Some(v) = arg.strip_prefix("--ws-identity=") {
+            ws_cfg.identity_file = Some(v.to_string());
             index += 1;
             continue;
         }
 
         cleaned.push(arg.clone());
         index += 1;
+    }
+
+    // Attach ws config if target is a WS URL
+    if let Some(ref mut launch) = remote {
+        if is_ws_target(&launch.target) {
+            launch.ws = Some(ws_cfg);
+        }
     }
 
     Ok((cleaned, remote))
@@ -81,23 +182,67 @@ fn validate_remote_target(target: &str) -> Result<&str, String> {
 }
 
 pub(crate) fn run_remote(remote: RemoteLaunch) -> io::Result<()> {
+    // WebSocket transport path
+    if let Some(ws_cfg) = remote.ws {
+        return run_remote_ws(remote.target, ws_cfg);
+    }
+    // SSH transport path (unchanged)
+    run_remote_ssh(remote.target)
+}
+
+fn run_remote_ssh(target: String) -> io::Result<()> {
     let session_name = crate::session::active_name()
         .unwrap_or_else(|| crate::session::DEFAULT_SESSION_NAME.to_string());
-    let local_socket = local_forward_socket_path(&remote.target, &session_name);
+    let local_socket = local_forward_socket_path(&target, &session_name);
     let program = std::env::args()
         .next()
         .unwrap_or_else(|| "herdr".to_string());
-    let reattach_command = reattach_command(&program, &remote.target, &session_name);
-    let remote_herdr = prepare_remote_herdr(&remote.target)?;
+    let reattach_command = reattach_command(&program, &target, &session_name);
+    let remote_herdr = prepare_remote_herdr(&target)?;
 
-    let _bridge = SshStdioBridge::start(
-        remote.target,
-        remote_herdr,
-        local_socket.clone(),
-        session_name,
-    )?;
+    let _bridge = SshStdioBridge::start(target, remote_herdr, local_socket.clone(), session_name)?;
 
     run_client_process(&local_socket, &reattach_command)
+}
+
+fn run_remote_ws(url: String, ws_cfg: WsLaunchConfig) -> io::Result<()> {
+    let session_name = crate::session::active_name()
+        .unwrap_or_else(|| crate::session::DEFAULT_SESSION_NAME.to_string());
+    let local_socket = local_forward_socket_path(&url, &session_name);
+    let program = std::env::args()
+        .next()
+        .unwrap_or_else(|| "herdr".to_string());
+    let reattach_command = ws_reattach_command(&program, &url, &ws_cfg, &session_name);
+
+    let _bridge = WsStdioBridge::start(url, ws_cfg, local_socket.clone(), session_name)?;
+
+    run_client_process(&local_socket, &reattach_command)
+}
+
+fn ws_reattach_command(
+    program: &str,
+    url: &str,
+    ws_cfg: &WsLaunchConfig,
+    session_name: &str,
+) -> String {
+    let program = if program.is_empty() { "herdr" } else { program };
+    let mut cmd = format!("{} --remote {}", shell_quote(program), shell_quote(url));
+    if session_name != crate::session::DEFAULT_SESSION_NAME {
+        cmd.push_str(&format!(" --session {}", shell_quote(session_name)));
+    }
+    if let Some(password) = &ws_cfg.password {
+        cmd.push_str(&format!(" --ws-password {}", shell_quote(password)));
+    }
+    if let Some(fp) = &ws_cfg.fingerprint {
+        cmd.push_str(&format!(" --ws-fingerprint {}", shell_quote(fp)));
+    }
+    if ws_cfg.pubkey_auth {
+        cmd.push_str(" --ws-pubkey-auth");
+    }
+    if let Some(id) = &ws_cfg.identity_file {
+        cmd.push_str(&format!(" --ws-identity {}", shell_quote(id)));
+    }
+    cmd
 }
 
 pub(crate) fn run_remote_client_bridge() -> io::Result<()> {
@@ -689,6 +834,135 @@ impl Drop for SshStdioBridge {
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket stdio bridge — mirrors SshStdioBridge using a local subprocess
+// ---------------------------------------------------------------------------
+
+struct WsStdioBridge {
+    local_socket: PathBuf,
+    should_stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl WsStdioBridge {
+    fn start(
+        url: String,
+        ws_cfg: WsLaunchConfig,
+        local_socket: PathBuf,
+        _session_name: String,
+    ) -> io::Result<Self> {
+        let _ = std::fs::remove_file(&local_socket);
+        let listener = UnixListener::bind(&local_socket)?;
+        crate::ipc::restrict_socket_permissions(&local_socket, BRIDGE_SOCKET_PERMISSION_MODE)?;
+        listener.set_nonblocking(true)?;
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+        let thread_stop = Arc::clone(&should_stop);
+        let thread = thread::spawn(move || {
+            while !thread_stop.load(Ordering::Acquire) {
+                match listener.accept() {
+                    Ok((stream, _addr)) => {
+                        if let Err(err) = stream.set_nonblocking(false) {
+                            eprintln!("herdr: ws bridge failed to prepare client socket: {err}");
+                            continue;
+                        }
+                        if let Err(err) = bridge_ws_connection(stream, &url, &ws_cfg) {
+                            eprintln!("herdr: ws bridge failed: {err}");
+                        }
+                    }
+                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                        thread::sleep(BRIDGE_ACCEPT_POLL);
+                    }
+                    Err(err) => {
+                        eprintln!("herdr: ws bridge listener failed: {err}");
+                        break;
+                    }
+                }
+            }
+        });
+
+        Ok(Self {
+            local_socket,
+            should_stop,
+            thread: Some(thread),
+        })
+    }
+}
+
+impl Drop for WsStdioBridge {
+    fn drop(&mut self) {
+        self.should_stop.store(true, Ordering::Release);
+        let _ = std::fs::remove_file(&self.local_socket);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+/// Spawn `herdr ws-client-bridge <url> [flags]` locally and bridge the Unix
+/// stream to its stdin/stdout — exactly like `bridge_connection` does for SSH.
+fn bridge_ws_connection(stream: UnixStream, url: &str, ws_cfg: &WsLaunchConfig) -> io::Result<()> {
+    let exe = std::env::current_exe()?;
+    let mut command = Command::new(&exe);
+    command.arg("ws-client-bridge").arg(url);
+
+    if let Some(password) = &ws_cfg.password {
+        command.arg("--password").arg(password);
+    }
+    if let Some(fp) = &ws_cfg.fingerprint {
+        command.arg("--fingerprint").arg(fp);
+    }
+    if ws_cfg.pubkey_auth {
+        command.arg("--pubkey-auth");
+    }
+    if let Some(id) = &ws_cfg.identity_file {
+        command.arg("--identity").arg(id);
+    }
+
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
+
+    let mut child = command.spawn().map_err(|err| {
+        io::Error::new(
+            err.kind(),
+            format!("failed to start ws-client-bridge: {err}"),
+        )
+    })?;
+    let mut child_stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "ws bridge stdin missing"))?;
+    let mut child_stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "ws bridge stdout missing"))?;
+    let mut stream_to_child = stream.try_clone()?;
+    let mut child_to_stream = stream;
+
+    let upload = thread::spawn(move || {
+        let _ = copy_flush(&mut stream_to_child, &mut child_stdin);
+    });
+    let download = thread::spawn(move || {
+        let _ = copy_flush(&mut child_stdout, &mut child_to_stream);
+        let _ = child_to_stream.shutdown(std::net::Shutdown::Write);
+    });
+
+    let status = child.wait()?;
+    let _ = upload.join();
+    let _ = download.join();
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::ConnectionAborted,
+            format!("ws bridge exited with {status}"),
+        ))
     }
 }
 

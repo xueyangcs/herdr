@@ -1,4 +1,4 @@
-use crate::config::{Keybinds, SoundConfig, ToastConfig, ToastDelivery};
+use crate::config::{Keybinds, ServerConfig, SoundConfig, ToastConfig, ToastDelivery};
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::layout::{Direction, Rect};
 use ratatui::style::Color;
@@ -619,10 +619,17 @@ pub enum SettingsSection {
     Sound,
     Toast,
     PaneLabels,
+    Server,
 }
 
 impl SettingsSection {
-    pub const ALL: &[Self] = &[Self::Theme, Self::Sound, Self::Toast, Self::PaneLabels];
+    pub const ALL: &[Self] = &[
+        Self::Theme,
+        Self::Sound,
+        Self::Toast,
+        Self::PaneLabels,
+        Self::Server,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -630,6 +637,7 @@ impl SettingsSection {
             Self::Sound => "sound",
             Self::Toast => "toasts",
             Self::PaneLabels => "pane labels",
+            Self::Server => "server",
         }
     }
 }
@@ -949,6 +957,8 @@ pub struct AppState {
     pub sound: SoundConfig,
     pub local_sound_playback: bool,
     pub toast_config: ToastConfig,
+    /// `[server]` config: ws-server port, password, default enabled state.
+    pub server_config: ServerConfig,
     pub keybinds: Keybinds,
     /// Frame counter for spinner animations (wraps around).
     pub spinner_tick: u32,
@@ -1192,6 +1202,7 @@ impl AppState {
             },
             local_sound_playback: false,
             toast_config: ToastConfig::default(),
+            server_config: ServerConfig::default(),
             keybinds: Keybinds {
                 new_workspace: (KeyCode::Char('n'), KeyModifiers::empty()),
                 new_workspace_label: "n".into(),

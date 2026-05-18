@@ -17,6 +17,8 @@ pub(super) enum SettingsAction {
     SaveSound(bool),
     SaveToastDelivery(ToastDelivery),
     SaveAgentBorderLabels(bool),
+    SaveServerEnabled(bool),
+    SaveServerPort(u16),
 }
 
 impl App {
@@ -29,8 +31,20 @@ impl App {
                 SettingsAction::SaveAgentBorderLabels(enabled) => {
                     self.save_agent_border_labels(enabled)
                 }
+                SettingsAction::SaveServerEnabled(enabled) => self.save_ws_server_enabled(enabled),
+                SettingsAction::SaveServerPort(port) => self.save_ws_server_port(port),
             }
         }
+    }
+}
+
+/// Default selection on the Server settings tab: highlight the toggle's
+/// current side (on if running, off if not).
+fn server_default_selection(_state: &AppState) -> usize {
+    if crate::ws_transport::control::is_running() {
+        crate::ui::SERVER_TOGGLE_ON_IDX
+    } else {
+        crate::ui::SERVER_TOGGLE_OFF_IDX
     }
 }
 
@@ -187,8 +201,8 @@ pub(super) fn update_settings_state(state: &mut AppState, key: KeyEvent) -> Opti
                 state.settings.list.selected = toast_delivery_index(state.toast_delivery());
             }
             KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
-                state.settings.section = SettingsSection::Theme;
-                state.settings.list.selected = current_theme_index(&state.theme_name);
+                state.settings.section = SettingsSection::Server;
+                state.settings.list.selected = server_default_selection(state);
             }
             _ => {
                 if let Some(super::modal::ModalAction::Close) =
@@ -198,6 +212,68 @@ pub(super) fn update_settings_state(state: &mut AppState, key: KeyEvent) -> Opti
                 }
             }
         },
+        SettingsSection::Server => {
+            let presets_len = crate::ui::SERVER_PORT_PRESETS.len();
+            let toggle_on = crate::ui::SERVER_TOGGLE_ON_IDX;
+            let toggle_off = crate::ui::SERVER_TOGGLE_OFF_IDX;
+            let sel = state.settings.list.selected;
+            match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if sel >= toggle_on {
+                        // Toggle row → port row at index 0
+                        state.settings.list.selected = 0;
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if sel < presets_len {
+                        state.settings.list.selected = if crate::ws_transport::control::is_running()
+                        {
+                            toggle_off
+                        } else {
+                            toggle_on
+                        };
+                    }
+                }
+                KeyCode::Left | KeyCode::Char('h') => {
+                    if sel < presets_len && sel > 0 {
+                        state.settings.list.selected -= 1;
+                    } else if sel == toggle_off {
+                        state.settings.list.selected = toggle_on;
+                    }
+                }
+                KeyCode::Right | KeyCode::Char('l') => {
+                    if sel < presets_len && sel + 1 < presets_len {
+                        state.settings.list.selected += 1;
+                    } else if sel == toggle_on {
+                        state.settings.list.selected = toggle_off;
+                    }
+                }
+                KeyCode::Enter | KeyCode::Char(' ') => {
+                    if sel < presets_len {
+                        let port = crate::ui::SERVER_PORT_PRESETS[sel];
+                        return Some(SettingsAction::SaveServerPort(port));
+                    }
+                    let enabled = sel == toggle_on;
+                    return Some(SettingsAction::SaveServerEnabled(enabled));
+                }
+                KeyCode::BackTab => {
+                    state.settings.section = SettingsSection::PaneLabels;
+                    state.settings.list.selected =
+                        usize::from(!state.agent_border_labels_enabled());
+                }
+                KeyCode::Tab => {
+                    state.settings.section = SettingsSection::Theme;
+                    state.settings.list.selected = current_theme_index(&state.theme_name);
+                }
+                _ => {
+                    if let Some(super::modal::ModalAction::Close) =
+                        super::modal::modal_action_from_key(&key, super::modal::SETTINGS_ACTIONS)
+                    {
+                        cancel_settings(state);
+                    }
+                }
+            }
+        }
     }
 
     None
@@ -290,6 +366,22 @@ impl AppState {
                     None
                 }
             }
+            SettingsSection::Server => {
+                // Server tab has a richer layout (title, description, port
+                // presets row, details, toggle). Mouse-based selection is
+                // intentionally limited to the keyboard for clarity; we only
+                // return Some for the toggle row at the bottom so clicking
+                // there flips on/off.
+                if row + 1 == area.y + area.height {
+                    if col < area.x + area.width / 2 {
+                        Some(crate::ui::SERVER_TOGGLE_ON_IDX)
+                    } else {
+                        Some(crate::ui::SERVER_TOGGLE_OFF_IDX)
+                    }
+                } else {
+                    None
+                }
+            }
         }
     }
 
@@ -305,6 +397,7 @@ impl AppState {
                         SettingsSection::PaneLabels => {
                             usize::from(!self.agent_border_labels_enabled())
                         }
+                        SettingsSection::Server => server_default_selection(self),
                     });
                     return None;
                 }
@@ -326,6 +419,15 @@ impl AppState {
                         SettingsSection::PaneLabels => {
                             let enabled = idx == 0;
                             Some(SettingsAction::SaveAgentBorderLabels(enabled))
+                        }
+                        SettingsSection::Server => {
+                            if idx < crate::ui::SERVER_PORT_PRESETS.len() {
+                                let port = crate::ui::SERVER_PORT_PRESETS[idx];
+                                Some(SettingsAction::SaveServerPort(port))
+                            } else {
+                                let enabled = idx == crate::ui::SERVER_TOGGLE_ON_IDX;
+                                Some(SettingsAction::SaveServerEnabled(enabled))
+                            }
                         }
                     };
                 }
