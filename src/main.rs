@@ -48,6 +48,7 @@ mod terminal_theme;
 mod ui;
 mod update;
 mod workspace;
+mod ws_transport;
 
 fn init_logging() {
     crate::logging::init_file_logging("herdr.log");
@@ -262,6 +263,34 @@ fn main() -> io::Result<()> {
         return client::run_client();
     }
 
+    // WebSocket server: `herdr ws-server [options]`
+    if args.get(1).map(|s| s.as_str()) == Some("ws-server") {
+        let sub_args: Vec<String> = args[2..].to_vec();
+        let config = match ws_transport::server::parse_args(&sub_args) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("error: {e}");
+                eprintln!("run 'herdr ws-server --help' for usage");
+                std::process::exit(2);
+            }
+        };
+        return ws_transport::run_ws_server(config);
+    }
+
+    // WebSocket client bridge: internal subprocess, spawned by remote.rs
+    if args.get(1).map(|s| s.as_str()) == Some("ws-client-bridge") {
+        let sub_args: Vec<String> = args[2..].to_vec();
+        let config = match ws_transport::bridge::parse_args(&sub_args) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("error: {e}");
+                eprintln!("run 'herdr ws-client-bridge --help' for usage");
+                std::process::exit(2);
+            }
+        };
+        return ws_transport::run_ws_client_bridge(config);
+    }
+
     if args.get(1).map(|s| s.as_str()) == Some("update") {
         match update::self_update() {
             Ok(_) => return Ok(()),
@@ -282,6 +311,12 @@ fn main() -> io::Result<()> {
         println!("Usage: herdr [options]");
         println!("       herdr --session <name> [options]");
         println!("       herdr --remote <ssh-target> [--session <name>]");
+        println!(
+            "       herdr --remote <ws://host:port> [--ws-password <pw>] [--ws-fingerprint <fp>]"
+        );
+        println!(
+            "       herdr --remote <wss://host:port> [--ws-pubkey-auth] [--ws-identity <key>]"
+        );
         println!("       herdr session attach <name>");
         println!("       herdr update");
         println!("       herdr server stop");
@@ -346,6 +381,10 @@ fn main() -> io::Result<()> {
                 "herdr client",
                 "Connect to a running server as a thin client",
             ),
+            (
+                "herdr ws-server",
+                "Start WebSocket remote server (HTTP transport)",
+            ),
         ] {
             println!("  {command:<32} {description}");
         }
@@ -354,6 +393,11 @@ fn main() -> io::Result<()> {
         println!("  --no-session        Run monolithically (no server/client, escape hatch)");
         println!("  --session <name>    Use or create a named persistent session");
         println!("  --remote <target>   Attach through SSH to a remote Herdr server");
+        println!("  --remote <ws-url>      Attach through WebSocket (ws:// or wss://)");
+        println!("  --ws-password <pw>     Bearer password for WebSocket auth");
+        println!("  --ws-fingerprint <fp>  TLS cert fingerprint for wss:// (SHA256:...)");
+        println!("  --ws-pubkey-auth       Use SSH public-key auth over WebSocket");
+        println!("  --ws-identity <key>    SSH private key for --ws-pubkey-auth");
         println!("  --default-config    Print default configuration and exit");
         println!("  --version, -V       Print version and exit");
         println!("  --help, -h          Show this help");
@@ -380,6 +424,10 @@ fn main() -> io::Result<()> {
         "--no-session",
         "--session",
         "--remote",
+        "--ws-password",
+        "--ws-fingerprint",
+        "--ws-pubkey-auth",
+        "--ws-identity",
         "--version",
         "-V",
         "--default-config",
@@ -397,6 +445,8 @@ fn main() -> io::Result<()> {
                 "server",
                 "client",
                 "remote-client-bridge",
+                "ws-server",
+                "ws-client-bridge",
                 "update",
                 "status",
                 "workspace",

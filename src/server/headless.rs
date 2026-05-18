@@ -2177,6 +2177,38 @@ pub fn run_server() -> io::Result<()> {
 
     let no_session = false; // Server always does session persistence.
 
+    // Auto-start the WebSocket gateway if the user opted in via Settings or
+    // by editing config.toml. If `[server] ws_enabled = true` but no password
+    // is set, generate one and persist it so the gateway is never exposed
+    // with no authentication.
+    if loaded_config.config.server.ws_enabled && !crate::ws_transport::control::is_running() {
+        let port = loaded_config.config.server.ws_port;
+        let tls = loaded_config.config.server.ws_tls;
+        let password = match loaded_config.config.server.ws_password.clone() {
+            Some(pw) => Some(pw),
+            None => match crate::ws_transport::control::generate_password() {
+                Ok(pw) => {
+                    if let Err(err) = crate::config::persist_server_password(&pw) {
+                        warn!(error = %err, "could not persist generated ws-server password");
+                    }
+                    info!(
+                        "auto-generated ws-server password (see config.toml [server].ws_password)"
+                    );
+                    Some(pw)
+                }
+                Err(err) => {
+                    warn!(error = %err, "could not generate ws-server password");
+                    None
+                }
+            },
+        };
+        if let Err(err) = crate::ws_transport::control::start(port, password.as_deref(), tls) {
+            warn!(error = %err, "failed to start ws-server gateway");
+        } else {
+            info!(port, tls, "ws-server gateway started in background");
+        }
+    }
+
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
