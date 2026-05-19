@@ -95,35 +95,6 @@ pub fn parse_args(args: &[String]) -> Result<WsBridgeConfig, String> {
     Ok(cfg)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_args_accepts_fingerprint() {
-        let args = vec![
-            "wss://127.0.0.1:8097".into(),
-            "--password".into(),
-            "secret".into(),
-            "--fingerprint".into(),
-            "SHA256:abc=".into(),
-        ];
-        let cfg = parse_args(&args).expect("parse");
-        assert_eq!(cfg.password.as_deref(), Some("secret"));
-        assert_eq!(cfg.fingerprint.as_deref(), Some("SHA256:abc="));
-    }
-
-    #[test]
-    fn parse_args_accepts_fingerprint_equals() {
-        let args = vec![
-            "wss://example:443".into(),
-            "--fingerprint=SHA256:xyz+".into(),
-        ];
-        let cfg = parse_args(&args).expect("parse");
-        assert_eq!(cfg.fingerprint.as_deref(), Some("SHA256:xyz+"));
-    }
-}
-
 fn print_help() {
     println!("herdr ws-client-bridge — internal WebSocket bridge subprocess");
     println!();
@@ -361,4 +332,33 @@ fn resolve_identity(config: &WsBridgeConfig) -> io::Result<PathBuf> {
         io::ErrorKind::NotFound,
         "no SSH private key found; use --ws-identity to specify one",
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_args_accepts_fingerprint() {
+        let args = vec![
+            "wss://127.0.0.1:8097".into(),
+            "--password".into(),
+            "secret".into(),
+            "--fingerprint".into(),
+            "SHA256:abc=".into(),
+        ];
+        let cfg = parse_args(&args).expect("parse");
+        assert_eq!(cfg.password.as_deref(), Some("secret"));
+        assert_eq!(cfg.fingerprint.as_deref(), Some("SHA256:abc="));
+    }
+
+    #[test]
+    fn parse_args_accepts_fingerprint_equals() {
+        let args = vec![
+            "wss://example:443".into(),
+            "--fingerprint=SHA256:xyz+".into(),
+        ];
+        let cfg = parse_args(&args).expect("parse");
+        assert_eq!(cfg.fingerprint.as_deref(), Some("SHA256:xyz+"));
+    }
 }

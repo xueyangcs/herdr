@@ -149,16 +149,16 @@ impl App {
         let password = self.state.server_config.password.clone();
         let tls = self.state.server_config.tls;
 
-        if enabled {
-            if !self.update_config_file("server.port", |content| {
+        if enabled
+            && !self.update_config_file("server.port", |content| {
                 crate::config::upsert_section_value(content, "server", "port", &port.to_string())
-            }) {
-                self.state.config_diagnostic =
-                    Some("failed to save ws-server port to config.toml".to_string());
-                self.config_diagnostic_deadline =
-                    Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
-                return;
-            }
+            })
+        {
+            self.state.config_diagnostic =
+                Some("failed to save ws-server port to config.toml".to_string());
+            self.config_diagnostic_deadline =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+            return;
         }
 
         if enabled && password.is_none() {
