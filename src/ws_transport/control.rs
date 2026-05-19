@@ -62,6 +62,10 @@ pub fn restart(port: u16, password: Option<&str>, tls: bool) -> io::Result<u32> 
 /// Returns an error if a server is already running or the spawn fails.
 pub fn start(port: u16, password: Option<&str>, tls: bool) -> io::Result<u32> {
     if is_running() {
+        let _ = stop();
+        std::thread::sleep(Duration::from_millis(150));
+    }
+    if is_running() {
         return Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
             "ws-server is already running",
@@ -94,11 +98,12 @@ pub fn start(port: u16, password: Option<&str>, tls: bool) -> io::Result<u32> {
     }
     if tls {
         command.arg("--tls");
+    } else {
+        command.arg("--no-tls");
     }
 
     eprintln!(
-        "herdr: spawning ws-server (port={port}, tls={tls}, password=configured{})",
-        if tls { ", --tls" } else { "" }
+        "herdr: spawning ws-server (port={port}, tls={tls}, password=configured)"
     );
 
     use std::os::unix::process::CommandExt;

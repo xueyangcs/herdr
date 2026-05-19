@@ -102,41 +102,6 @@ impl Default for ServerConfig {
     }
 }
 
-/// Legacy `[server]` keys from before the `ws_*` → short-name rename.
-#[derive(Debug, Default, Deserialize)]
-struct ServerConfigLegacy {
-    enabled: Option<bool>,
-    ws_enabled: Option<bool>,
-    port: Option<u16>,
-    ws_port: Option<u16>,
-    password: Option<String>,
-    ws_password: Option<String>,
-    fingerprint: Option<String>,
-    ws_fingerprint: Option<String>,
-    tls: Option<bool>,
-    ws_tls: Option<bool>,
-}
-
-impl ServerConfig {
-    /// Load `[server]` from TOML, accepting one-off legacy `ws_*` keys on disk.
-    pub(crate) fn from_toml(value: &toml::Value) -> Result<Self, toml::de::Error> {
-        let legacy: ServerConfigLegacy = value.clone().try_into()?;
-        Ok(legacy.into())
-    }
-}
-
-impl From<ServerConfigLegacy> for ServerConfig {
-    fn from(raw: ServerConfigLegacy) -> Self {
-        Self {
-            enabled: raw.enabled.or(raw.ws_enabled).unwrap_or(false),
-            port: raw.port.or(raw.ws_port).unwrap_or(8090),
-            password: raw.password.or(raw.ws_password),
-            fingerprint: raw.fingerprint.or(raw.ws_fingerprint),
-            tls: raw.tls.or(raw.ws_tls).unwrap_or(true),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct LoadedConfig {
     pub config: Config,
@@ -497,24 +462,6 @@ delivery = "terminal"
     fn onboarding_false_skips_setup() {
         let config: Config = toml::from_str("onboarding = false").unwrap();
         assert!(!config.should_show_onboarding());
-    }
-
-    #[test]
-    fn server_config_reads_legacy_ws_keys() {
-        let toml = r#"
-ws_enabled = true
-ws_port = 8091
-ws_password = "secret"
-ws_fingerprint = "SHA256:abc="
-ws_tls = true
-"#;
-        let value: toml::Value = toml::from_str(toml).unwrap();
-        let server = ServerConfig::from_toml(&value).unwrap();
-        assert!(server.enabled);
-        assert_eq!(server.port, 8091);
-        assert_eq!(server.password.as_deref(), Some("secret"));
-        assert_eq!(server.fingerprint.as_deref(), Some("SHA256:abc="));
-        assert!(server.tls);
     }
 
     #[test]

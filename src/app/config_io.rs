@@ -1,15 +1,6 @@
 use super::App;
 
 impl App {
-    fn update_server_config<F>(&mut self, error_context: &str, update: F) -> bool
-    where
-        F: FnOnce(&str) -> String,
-    {
-        self.update_config_file(error_context, |content| {
-            crate::config::scrub_legacy_server_keys(&update(content))
-        })
-    }
-
     pub(super) fn update_config_file<F>(&mut self, error_context: &str, update: F) -> bool
     where
         F: FnOnce(&str) -> String,
@@ -96,7 +87,7 @@ impl App {
             match crate::ws_transport::control::generate_password() {
                 Ok(pw) => {
                     self.state.server_config.password = Some(pw.clone());
-                    if !self.update_server_config("server.password", |content| {
+                    if !self.update_config_file("server.password", |content| {
                         crate::config::upsert_section_value(
                             content,
                             "server",
@@ -127,7 +118,7 @@ impl App {
             match crate::ws_transport::tls::ensure_default_cert_and_read_fingerprint() {
                 Ok(fp) => {
                     self.state.server_config.fingerprint = Some(fp.clone());
-                    if !self.update_server_config("server.fingerprint", |content| {
+                    if !self.update_config_file("server.fingerprint", |content| {
                         crate::config::upsert_section_value(
                             content,
                             "server",
@@ -159,7 +150,7 @@ impl App {
         let tls = self.state.server_config.tls;
 
         if enabled
-            && !self.update_server_config("server.port", |content| {
+            && !self.update_config_file("server.port", |content| {
                 crate::config::upsert_section_value(content, "server", "port", &port.to_string())
             })
         {
@@ -195,7 +186,7 @@ impl App {
         }
 
         self.state.server_config.enabled = enabled;
-        if !self.update_server_config("server.enabled", |content| {
+        if !self.update_config_file("server.enabled", |content| {
             let content =
                 crate::config::upsert_section_bool(content, "server", "enabled", enabled);
             crate::config::upsert_section_bool(&content, "server", "tls", tls)
@@ -211,7 +202,7 @@ impl App {
     /// restart it on the new port so the change is immediate.
     pub(super) fn save_ws_server_port(&mut self, port: u16) {
         self.state.server_config.port = port;
-        if !self.update_server_config("server.port", |content| {
+        if !self.update_config_file("server.port", |content| {
             crate::config::upsert_section_value(content, "server", "port", &port.to_string())
         }) {
             self.state.config_diagnostic =
@@ -225,7 +216,7 @@ impl App {
                 if let Ok(fp) = crate::ws_transport::tls::ensure_default_cert_and_read_fingerprint()
                 {
                     self.state.server_config.fingerprint = Some(fp.clone());
-                    let _ = self.update_server_config("server.fingerprint", |content| {
+                    let _ = self.update_config_file("server.fingerprint", |content| {
                         crate::config::upsert_section_value(
                             content,
                             "server",

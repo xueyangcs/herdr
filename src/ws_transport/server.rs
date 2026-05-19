@@ -24,7 +24,7 @@ use super::auth;
 use super::tls;
 
 /// Configuration for `herdr ws-server`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct WsServerConfig {
     /// TCP port to listen on (default 8080).
     pub port: u16,
@@ -40,6 +40,20 @@ pub struct WsServerConfig {
     pub pubkey_auth: bool,
     /// Path to `authorized_keys` file (default: `~/.ssh/authorized_keys`).
     pub authorized_keys: Option<PathBuf>,
+}
+
+impl Default for WsServerConfig {
+    fn default() -> Self {
+        Self {
+            port: 8080,
+            password: None,
+            tls: true,
+            cert_path: None,
+            key_path: None,
+            pubkey_auth: false,
+            authorized_keys: None,
+        }
+    }
 }
 
 /// Parse CLI args for `herdr ws-server [options]`.
@@ -75,6 +89,10 @@ pub fn parse_args(args: &[String]) -> Result<WsServerConfig, String> {
             }
             "--tls" => {
                 cfg.tls = true;
+                i += 1;
+            }
+            "--no-tls" => {
+                cfg.tls = false;
                 i += 1;
             }
             "--cert" => {
@@ -122,7 +140,8 @@ fn print_help() {
     println!("Options:");
     println!("  --port <port>            TCP port to listen on (default: 8080)");
     println!("  --password <pw>          Require Bearer password on connect");
-    println!("  --tls                    Enable TLS (wss://); cert auto-generated");
+    println!("  --tls                    Enable TLS (wss://; default)");
+    println!("  --no-tls                 Plain ws:// (no TLS)");
     println!("  --cert <path>            PEM certificate path (with --tls)");
     println!("  --key  <path>            PEM private key path (with --tls)");
     println!("  --pubkey-auth            Enable SSH public-key challenge-response");
@@ -487,4 +506,29 @@ impl Callback for PasswordCheck {
 
 fn ws_to_io(e: impl std::fmt::Display) -> io::Error {
     io::Error::new(io::ErrorKind::ConnectionAborted, e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_args_tls_on_by_default() {
+        let args = vec!["--port".into(), "8090".into(), "--password".into(), "pw".into()];
+        let cfg = parse_args(&args).expect("parse");
+        assert!(cfg.tls, "ws-server must default to TLS (wss://)");
+    }
+
+    #[test]
+    fn parse_args_no_tls_flag_disables_tls() {
+        let args = vec![
+            "--port".into(),
+            "8090".into(),
+            "--password".into(),
+            "pw".into(),
+            "--no-tls".into(),
+        ];
+        let cfg = parse_args(&args).expect("parse");
+        assert!(!cfg.tls);
+    }
 }

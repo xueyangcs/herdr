@@ -184,17 +184,14 @@ fn load_live_config_from_str(content: &str) -> Result<LoadedConfig, Vec<String>>
         &mut invalid_sections,
         |section| config.experimental = section,
     );
-    if let Some(value) = table.get("server") {
-        match crate::config::ServerConfig::from_toml(value) {
-            Ok(section) => config.server = section,
-            Err(err) => {
-                diagnostics.push(format!(
-                    "invalid server config: {err}; keeping current server settings"
-                ));
-                invalid_sections.push("server".to_string());
-            }
-        }
-    }
+    load_live_section(
+        table,
+        "server",
+        "server config",
+        &mut diagnostics,
+        &mut invalid_sections,
+        |section| config.server = section,
+    );
 
     Ok(LoadedConfig {
         config,
@@ -290,21 +287,6 @@ pub fn upsert_section_value(content: &str, section: &str, key: &str, value: &str
 
 pub fn upsert_section_bool(content: &str, section: &str, key: &str, value: bool) -> String {
     upsert_section_raw(content, section, key, &value.to_string())
-}
-
-/// Drop deprecated `ws_*` keys from `[server]` after migrating to short names.
-pub fn scrub_legacy_server_keys(content: &str) -> String {
-    let mut out = content.to_string();
-    for key in [
-        "ws_enabled",
-        "ws_port",
-        "ws_password",
-        "ws_fingerprint",
-        "ws_tls",
-    ] {
-        out = remove_section_key(&out, "server", key);
-    }
-    out
 }
 
 pub fn remove_section_key(content: &str, section: &str, key: &str) -> String {
