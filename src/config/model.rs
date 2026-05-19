@@ -78,20 +78,15 @@ pub struct Config {
 #[serde(default)]
 pub struct ServerConfig {
     /// Whether the WebSocket gateway should be started in the background.
-    #[serde(alias = "ws_enabled")]
     pub enabled: bool,
     /// TCP port for the gateway (default 8090).
-    #[serde(alias = "ws_port")]
     pub port: u16,
     /// Bearer password required from clients. If unset, the gateway
     /// auto-generates one on the first enable.
-    #[serde(alias = "ws_password")]
     pub password: Option<String>,
     /// SHA-256 TLS certificate fingerprint (`SHA256:...`) for `wss://`.
-    #[serde(alias = "ws_fingerprint")]
     pub fingerprint: Option<String>,
     /// Whether the gateway listens with TLS (`wss://`). Default: true.
-    #[serde(alias = "ws_tls")]
     pub tls: bool,
 }
 
