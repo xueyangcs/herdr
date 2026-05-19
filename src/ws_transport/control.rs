@@ -71,7 +71,7 @@ pub fn start(port: u16, password: Option<&str>, tls: bool) -> io::Result<u32> {
     if password.is_none() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "ws-server requires a password; configure [server] ws_password or enable from Settings",
+            "ws-server requires a password; configure [server] password or enable from Settings",
         ));
     }
 
@@ -97,7 +97,8 @@ pub fn start(port: u16, password: Option<&str>, tls: bool) -> io::Result<u32> {
     }
 
     eprintln!(
-        "herdr: spawning ws-server (port={port}, tls={tls}, password=configured)"
+        "herdr: spawning ws-server (port={port}, tls={tls}, password=configured{})",
+        if tls { ", --tls" } else { "" }
     );
 
     use std::os::unix::process::CommandExt;

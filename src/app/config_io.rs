@@ -73,26 +73,25 @@ impl App {
         }
     }
 
-    /// Toggle the optional WebSocket gateway. Persists `[server] ws_enabled`
+    /// Toggle the optional WebSocket gateway. Persists `[server] enabled`
     /// in `config.toml` and starts/stops the `herdr ws-server` background
     /// subprocess so the user perceives the change as instant.
     ///
     /// On the first enable, if no password is configured a fresh random one
-    /// is generated and persisted to `[server] ws_password`. We refuse to
+    /// is generated and persisted to `[server] password`. We refuse to
     /// expose a herdr session on the network with no authentication.
-    /// TLS is on by default (`[server] ws_tls = true`); the self-signed
-    /// certificate is generated up front so the connection command we show
-    /// in the Settings UI includes the correct fingerprint.
+    /// TLS is on by default (`[server] tls = true`); the self-signed
+    /// certificate is generated up front and its fingerprint is persisted.
     pub(super) fn save_ws_server_enabled(&mut self, enabled: bool) {
-        if enabled && self.state.server_config.ws_password.is_none() {
+        if enabled && self.state.server_config.password.is_none() {
             match crate::ws_transport::control::generate_password() {
                 Ok(pw) => {
-                    self.state.server_config.ws_password = Some(pw.clone());
-                    if !self.update_config_file("server.ws_password", |content| {
+                    self.state.server_config.password = Some(pw.clone());
+                    if !self.update_config_file("server.password", |content| {
                         crate::config::upsert_section_value(
                             content,
                             "server",
-                            "ws_password",
+                            "password",
                             &format!("\"{pw}\""),
                         )
                     }) {
@@ -115,28 +114,24 @@ impl App {
 
         // Default to TLS on first enable. Pre-generate the self-signed cert
         // so the Settings UI can show its SHA-256 fingerprint immediately.
-        if enabled && self.state.server_config.ws_tls {
+        if enabled && self.state.server_config.tls {
             match crate::ws_transport::tls::ensure_default_cert_and_read_fingerprint() {
                 Ok(fp) => {
-                    if self.state.server_config.ws_fingerprint.is_none() {
-                        self.state.server_config.ws_fingerprint = Some(fp.clone());
-                        if !self.update_config_file("server.ws_fingerprint", |content| {
-                            crate::config::upsert_section_value(
-                                content,
-                                "server",
-                                "ws_fingerprint",
-                                &format!("\"{fp}\""),
-                            )
-                        }) {
-                            self.state.config_diagnostic = Some(
-                                "failed to save ws-server TLS fingerprint to config.toml"
-                                    .to_string(),
-                            );
-                            self.config_diagnostic_deadline = Some(
-                                std::time::Instant::now() + std::time::Duration::from_secs(5),
-                            );
-                            return;
-                        }
+                    self.state.server_config.fingerprint = Some(fp.clone());
+                    if !self.update_config_file("server.fingerprint", |content| {
+                        crate::config::upsert_section_value(
+                            content,
+                            "server",
+                            "fingerprint",
+                            &format!("\"{fp}\""),
+                        )
+                    }) {
+                        self.state.config_diagnostic = Some(
+                            "failed to save ws-server TLS fingerprint to config.toml".to_string(),
+                        );
+                        self.config_diagnostic_deadline =
+                            Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+                        return;
                     }
                 }
                 Err(err) => {
@@ -150,9 +145,21 @@ impl App {
             }
         }
 
-        let port = self.state.server_config.ws_port;
-        let password = self.state.server_config.ws_password.clone();
-        let tls = self.state.server_config.ws_tls;
+        let port = self.state.server_config.port;
+        let password = self.state.server_config.password.clone();
+        let tls = self.state.server_config.tls;
+
+        if enabled {
+            if !self.update_config_file("server.port", |content| {
+                crate::config::upsert_section_value(content, "server", "port", &port.to_string())
+            }) {
+                self.state.config_diagnostic =
+                    Some("failed to save ws-server port to config.toml".to_string());
+                self.config_diagnostic_deadline =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+                return;
+            }
+        }
 
         if enabled && password.is_none() {
             self.state.config_diagnostic =
@@ -178,9 +185,9 @@ impl App {
             return;
         }
 
-        self.state.server_config.ws_enabled = enabled;
-        if !self.update_config_file("server.ws_enabled", |content| {
-            crate::config::upsert_section_bool(content, "server", "ws_enabled", enabled)
+        self.state.server_config.enabled = enabled;
+        if !self.update_config_file("server.enabled", |content| {
+            crate::config::upsert_section_bool(content, "server", "enabled", enabled)
         }) {
             self.state.config_diagnostic =
                 Some("failed to save ws-server enabled state to config.toml".to_string());
@@ -189,17 +196,12 @@ impl App {
         }
     }
 
-    /// Persist a new `[server] ws_port` and, if the gateway is already
-    /// running, restart it on the new port so the change is immediate.
+    /// Persist a new `[server] port` and, if the gateway is already running,
+    /// restart it on the new port so the change is immediate.
     pub(super) fn save_ws_server_port(&mut self, port: u16) {
-        if self.state.server_config.ws_port == port && !crate::ws_transport::control::is_running() {
-            // Nothing to do: same value, nothing running to restart.
-            self.state.server_config.ws_port = port;
-        } else {
-            self.state.server_config.ws_port = port;
-        }
-        if !self.update_config_file("server.ws_port", |content| {
-            crate::config::upsert_section_value(content, "server", "ws_port", &port.to_string())
+        self.state.server_config.port = port;
+        if !self.update_config_file("server.port", |content| {
+            crate::config::upsert_section_value(content, "server", "port", &port.to_string())
         }) {
             self.state.config_diagnostic =
                 Some("failed to save ws-server port to config.toml".to_string());
@@ -207,9 +209,24 @@ impl App {
                 Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
             return;
         }
-        if self.state.server_config.ws_enabled {
-            let password = self.state.server_config.ws_password.clone();
-            let tls = self.state.server_config.ws_tls;
+        if self.state.server_config.enabled {
+            if self.state.server_config.tls {
+                if let Ok(fp) =
+                    crate::ws_transport::tls::ensure_default_cert_and_read_fingerprint()
+                {
+                    self.state.server_config.fingerprint = Some(fp.clone());
+                    let _ = self.update_config_file("server.fingerprint", |content| {
+                        crate::config::upsert_section_value(
+                            content,
+                            "server",
+                            "fingerprint",
+                            &format!("\"{fp}\""),
+                        )
+                    });
+                }
+            }
+            let password = self.state.server_config.password.clone();
+            let tls = self.state.server_config.tls;
             if let Err(err) =
                 crate::ws_transport::control::restart(port, password.as_deref(), tls)
             {

@@ -25,6 +25,15 @@ pub fn cert_fingerprint(cert_der: &[u8]) -> String {
     )
 }
 
+/// Build a rustls `ServerName` for a URL host (DNS name or IP literal).
+pub fn server_name_from_host(host: &str) -> Result<rustls::pki_types::ServerName<'static>, String> {
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return Ok(rustls::pki_types::ServerName::IpAddress(ip.into()));
+    }
+    rustls::pki_types::ServerName::try_from(host.to_string())
+        .map_err(|_| format!("invalid TLS server name: {host}"))
+}
+
 /// Parse a `SHA256:<base64>` fingerprint string into raw bytes.
 pub fn parse_fingerprint(fp: &str) -> Result<[u8; 32], String> {
     let b64 = fp
@@ -103,9 +112,14 @@ fn generate_and_save(cert_path: &Path, key_path: &Path) -> io::Result<()> {
     if let Some(parent) = cert_path.parent() {
         fs::create_dir_all(parent)?;
     }
+    // Include localhost + loopback IP so clients can use hostnames or 127.0.0.1.
     let CertifiedKey { cert, signing_key } =
-        generate_simple_self_signed(vec!["herdr-ws".to_string()])
-            .map_err(|e| io::Error::other(format!("cert generation failed: {e}")))?;
+        generate_simple_self_signed(vec![
+            "herdr-ws".to_string(),
+            "localhost".to_string(),
+            "127.0.0.1".to_string(),
+        ])
+        .map_err(|e| io::Error::other(format!("cert generation failed: {e}")))?;
 
     fs::write(cert_path, cert.pem())?;
     fs::write(key_path, signing_key.serialize_pem())?;

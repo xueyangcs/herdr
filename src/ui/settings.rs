@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
@@ -13,43 +15,36 @@ use super::widgets::{
 };
 use crate::{
     app::{state::Palette, AppState},
-    config::{ServerConfig, ToastDelivery},
+    config::{config_path, ServerConfig, ToastDelivery},
 };
 
 /// Server tab: on/off toggle rows (same pattern as sound settings).
 pub(crate) const SERVER_IDX_ON: usize = 0;
 pub(crate) const SERVER_IDX_OFF: usize = 1;
-/// Shown below the toggle when `ws_enabled` is true.
+/// Shown below the toggle when the gateway is enabled.
 pub(crate) const SERVER_IDX_PORT: usize = 2;
-/// Shown when the gateway is configured and a connect command is available.
-pub(crate) const SERVER_IDX_COMMAND: usize = 3;
 
 pub(crate) fn server_settings_item_count(config: &ServerConfig) -> usize {
-    if !config.ws_enabled {
-        return 2;
-    }
-    if server_connect_command(config).is_some() {
-        4
-    } else {
-        3
-    }
+    if config.enabled { 3 } else { 2 }
 }
 
-pub(crate) fn server_connect_command(config: &ServerConfig) -> Option<String> {
-    if !config.ws_enabled {
-        return None;
+fn server_settings_description() -> String {
+    let path = display_config_path();
+    format!(
+        "Password and TLS fingerprint are stored in [server] in:\n{path}\n\
+         (wss-server uses TLS by default.)"
+    )
+}
+
+fn display_config_path() -> String {
+    let path = config_path();
+    if let Ok(home) = std::env::var("HOME") {
+        let home = Path::new(&home);
+        if let Ok(suffix) = path.strip_prefix(home) {
+            return format!("~/{}", suffix.display());
+        }
     }
-    let password = config.ws_password.as_ref()?;
-    let scheme = if config.ws_tls { "wss" } else { "ws" };
-    let mut cmd = format!(
-        "herdr --remote {scheme}://<your-host>:{} --password {password}",
-        config.ws_port
-    );
-    if config.ws_tls {
-        let fingerprint = config.ws_fingerprint.as_ref()?;
-        cmd.push_str(&format!(" --fingerprint {fingerprint}"));
-    }
-    Some(cmd)
+    path.display().to_string()
 }
 
 pub(super) fn render_settings_overlay(app: &AppState, frame: &mut Frame, area: Rect) {
@@ -272,11 +267,11 @@ fn render_settings_toggle(
 fn render_settings_server(app: &AppState, frame: &mut Frame, area: Rect) {
     let p = &app.palette;
     let config = &app.server_config;
-    let enabled = config.ws_enabled;
+    let enabled = config.enabled;
     let selected = app.settings.list.selected;
 
     let [desc_area, _, list_area] = Layout::vertical([
-        Constraint::Length(2),
+        Constraint::Length(3),
         Constraint::Length(1),
         Constraint::Min(2),
     ])
@@ -285,14 +280,13 @@ fn render_settings_server(app: &AppState, frame: &mut Frame, area: Rect) {
     render_modal_description(
         frame,
         desc_area,
-        "expose this herdr session over wss:// for remote clients (TLS on by default)",
+        &server_settings_description(),
         Style::default().fg(p.overlay1),
     );
 
     enum ServerRow {
         Toggle { label: &'static str, value: bool },
         Port,
-        Command(String),
     }
 
     let mut rows: Vec<ServerRow> = vec![
@@ -307,9 +301,6 @@ fn render_settings_server(app: &AppState, frame: &mut Frame, area: Rect) {
     ];
     if enabled {
         rows.push(ServerRow::Port);
-        if let Some(cmd) = server_connect_command(config) {
-            rows.push(ServerRow::Command(cmd));
-        }
     }
 
     let choice_rows = modal_choice_rows(list_area, rows.len(), 1);
@@ -319,23 +310,16 @@ fn render_settings_server(app: &AppState, frame: &mut Frame, area: Rect) {
                 let marker = if *value == enabled { " ✓" } else { "" };
                 (format!(" wss-server: {label}{marker}"), *value == enabled)
             }
-            ServerRow::Port => (format!(" port  {}", config.ws_port), false),
-            ServerRow::Command(cmd) => (format!(" {cmd}"), false),
+            ServerRow::Port => (format!(" port  {}", config.port), false),
         };
         let is_selected = idx == selected;
         let style = if is_selected {
             Style::default()
                 .bg(p.surface0)
-                .fg(if matches!(row_kind, ServerRow::Command(_)) {
-                    p.green
-                } else {
-                    p.text
-                })
+                .fg(p.text)
                 .add_modifier(Modifier::BOLD)
         } else if is_active {
             Style::default().fg(p.text).add_modifier(Modifier::BOLD)
-        } else if matches!(row_kind, ServerRow::Command(_)) {
-            Style::default().fg(p.green)
         } else {
             Style::default().fg(p.subtext0)
         };

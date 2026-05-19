@@ -62,9 +62,21 @@ fn normalize_ws_url(target: &str) -> String {
     target.to_string()
 }
 
+/// Subcommands that pass `--password` / `--fingerprint` to their own parsers.
+fn preserves_ws_transport_flags(args: &[String]) -> bool {
+    matches!(
+        args.get(1).map(String::as_str),
+        Some("ws-server" | "ws-client-bridge")
+    )
+}
+
 pub(crate) fn extract_remote_args(
     args: &[String],
 ) -> Result<(Vec<String>, Option<RemoteLaunch>), String> {
+    if preserves_ws_transport_flags(args) {
+        return Ok((args.to_vec(), None));
+    }
+
     let mut cleaned = Vec::with_capacity(args.len());
     if let Some(program) = args.first() {
         cleaned.push(program.clone());
@@ -1226,6 +1238,58 @@ mod tests {
         let args = vec!["herdr".into(), "--remote".into(), "-oProxyCommand=x".into()];
         let err = extract_remote_args(&args).unwrap_err();
         assert_eq!(err, "--remote target must not start with '-'");
+    }
+
+    #[test]
+    fn extract_remote_args_preserves_ws_client_bridge_flags() {
+        let args = vec![
+            "herdr".into(),
+            "ws-client-bridge".into(),
+            "wss://127.0.0.1:8090".into(),
+            "--password".into(),
+            "secret".into(),
+            "--fingerprint".into(),
+            "SHA256:abc=".into(),
+        ];
+        let (cleaned, remote) = extract_remote_args(&args).unwrap();
+        assert_eq!(cleaned, args);
+        assert!(remote.is_none());
+    }
+
+    #[test]
+    fn extract_remote_args_preserves_ws_server_password() {
+        let args = vec![
+            "herdr".into(),
+            "ws-server".into(),
+            "--port".into(),
+            "8090".into(),
+            "--tls".into(),
+            "--password".into(),
+            "secret".into(),
+        ];
+        let (cleaned, remote) = extract_remote_args(&args).unwrap();
+        assert_eq!(cleaned, args);
+        assert!(remote.is_none());
+    }
+
+    #[test]
+    fn extract_remote_args_strips_ws_flags_for_remote_launch() {
+        let args = vec![
+            "herdr".into(),
+            "--remote".into(),
+            "wss://example:8090".into(),
+            "--password".into(),
+            "secret".into(),
+            "--fingerprint".into(),
+            "SHA256:abc=".into(),
+        ];
+        let (cleaned, remote) = extract_remote_args(&args).unwrap();
+        assert_eq!(cleaned, vec!["herdr"]);
+        let launch = remote.unwrap();
+        assert_eq!(launch.target, "wss://example:8090");
+        let ws = launch.ws.unwrap();
+        assert_eq!(ws.password.as_deref(), Some("secret"));
+        assert_eq!(ws.fingerprint.as_deref(), Some("SHA256:abc="));
     }
 
     #[test]

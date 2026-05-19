@@ -3,7 +3,7 @@ use ratatui::layout::Rect;
 
 use crate::{
     app::{
-        state::{AppState, SettingsSection, ToastKind, ToastNotification, THEME_NAMES},
+        state::{AppState, SettingsSection, THEME_NAMES},
         App, Mode,
     },
     config::ToastDelivery,
@@ -19,7 +19,6 @@ pub(crate) enum SettingsAction {
     SaveAgentBorderLabels(bool),
     SaveServerEnabled(bool),
     SaveServerPort(u16),
-    CopyServerConnectCommand(String),
 }
 
 impl App {
@@ -34,28 +33,13 @@ impl App {
                 }
                 SettingsAction::SaveServerEnabled(enabled) => self.save_ws_server_enabled(enabled),
                 SettingsAction::SaveServerPort(port) => self.save_ws_server_port(port),
-                SettingsAction::CopyServerConnectCommand(cmd) => {
-                    self.copy_server_connect_command(&cmd);
-                }
             }
         }
-    }
-
-    pub(super) fn copy_server_connect_command(&mut self, cmd: &str) {
-        self.state.request_clipboard_write = Some(cmd.as_bytes().to_vec());
-        let previous_toast = self.state.toast.clone();
-        self.state.toast = Some(ToastNotification {
-            kind: ToastKind::Finished,
-            title: "copied to clipboard".to_string(),
-            context: "remote connect command".to_string(),
-            target: None,
-        });
-        self.sync_toast_deadline(previous_toast);
     }
 }
 
 fn server_default_selection(state: &AppState) -> usize {
-    if state.server_config.ws_enabled {
+    if state.server_config.enabled {
         crate::ui::SERVER_IDX_ON
     } else {
         crate::ui::SERVER_IDX_OFF
@@ -129,7 +113,7 @@ fn apply_settings(state: &mut AppState) -> Option<SettingsAction> {
 }
 
 pub(crate) fn open_settings_server_port(state: &mut AppState) {
-    state.name_input = state.server_config.ws_port.to_string();
+    state.name_input = state.server_config.port.to_string();
     state.name_input_replace_on_type = true;
     state.mode = Mode::SettingsServerPort;
 }
@@ -311,15 +295,8 @@ pub(super) fn update_settings_state(state: &mut AppState, key: KeyEvent) -> Opti
                     crate::ui::SERVER_IDX_OFF => {
                         return Some(SettingsAction::SaveServerEnabled(false));
                     }
-                    crate::ui::SERVER_IDX_PORT if state.server_config.ws_enabled => {
+                    crate::ui::SERVER_IDX_PORT if state.server_config.enabled => {
                         open_settings_server_port(state);
-                    }
-                    crate::ui::SERVER_IDX_COMMAND => {
-                        if let Some(cmd) =
-                            crate::ui::server_connect_command(&state.server_config)
-                        {
-                            return Some(SettingsAction::CopyServerConnectCommand(cmd));
-                        }
                     }
                     _ => {}
                 },
@@ -479,14 +456,9 @@ impl AppState {
                             crate::ui::SERVER_IDX_OFF => {
                                 Some(SettingsAction::SaveServerEnabled(false))
                             }
-                            crate::ui::SERVER_IDX_PORT if self.server_config.ws_enabled => {
+                            crate::ui::SERVER_IDX_PORT if self.server_config.enabled => {
                                 open_settings_server_port(self);
                                 None
-                            }
-                            crate::ui::SERVER_IDX_COMMAND => {
-                                crate::ui::server_connect_command(&self.server_config).map(
-                                    SettingsAction::CopyServerConnectCommand,
-                                )
                             }
                             _ => None,
                         },

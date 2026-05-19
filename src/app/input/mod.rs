@@ -170,9 +170,6 @@ impl App {
                 }
                 SettingsAction::SaveServerEnabled(enabled) => self.save_ws_server_enabled(enabled),
                 SettingsAction::SaveServerPort(port) => self.save_ws_server_port(port),
-                SettingsAction::CopyServerConnectCommand(cmd) => {
-                    self.copy_server_connect_command(&cmd);
-                }
             }
         }
         if self.state.agent_panel_scope != previous_agent_panel_scope {

@@ -11,9 +11,13 @@ use std::sync::Arc;
 
 use futures_util::SinkExt as _;
 use futures_util::StreamExt as _;
+use tokio_tungstenite::tungstenite::http::Request;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio_rustls::TlsConnector;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{client_async, MaybeTlsStream};
 use tracing::debug;
 
 use super::auth;
@@ -91,6 +95,35 @@ pub fn parse_args(args: &[String]) -> Result<WsBridgeConfig, String> {
     Ok(cfg)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_args_accepts_fingerprint() {
+        let args = vec![
+            "wss://127.0.0.1:8097".into(),
+            "--password".into(),
+            "secret".into(),
+            "--fingerprint".into(),
+            "SHA256:abc=".into(),
+        ];
+        let cfg = parse_args(&args).expect("parse");
+        assert_eq!(cfg.password.as_deref(), Some("secret"));
+        assert_eq!(cfg.fingerprint.as_deref(), Some("SHA256:abc="));
+    }
+
+    #[test]
+    fn parse_args_accepts_fingerprint_equals() {
+        let args = vec![
+            "wss://example:443".into(),
+            "--fingerprint=SHA256:xyz+".into(),
+        ];
+        let cfg = parse_args(&args).expect("parse");
+        assert_eq!(cfg.fingerprint.as_deref(), Some("SHA256:xyz+"));
+    }
+}
+
 fn print_help() {
     println!("herdr ws-client-bridge — internal WebSocket bridge subprocess");
     println!();
@@ -154,47 +187,65 @@ async fn connect_plain(
     Ok(ws)
 }
 
-async fn connect_tls(
-    request: impl IntoClientRequest + Unpin,
-    config: &WsBridgeConfig,
-) -> io::Result<WsStream> {
-    let map_tls_err = |e: tokio_tungstenite::tungstenite::Error| {
+async fn connect_tls(request: Request<()>, config: &WsBridgeConfig) -> io::Result<WsStream> {
+    let fp_str = config.fingerprint.as_deref().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "wss:// requires --fingerprint (SHA256:... from server Settings or ws-server.log); \
+             self-signed TLS cannot use system certificate roots",
+        )
+    })?;
+    let fp = tls::parse_fingerprint(fp_str)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+    let uri = request.uri();
+    let host = uri.host().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "wss URL is missing a host")
+    })?;
+    let port = uri.port_u16().unwrap_or(443);
+    let addr = format!("{host}:{port}");
+
+    let tcp = TcpStream::connect(&addr).await.map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::ConnectionRefused,
+            format!("TCP connect to {addr}: {e}"),
+        )
+    })?;
+
+    let tls_config = Arc::new(
+        rustls::ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(tls::FingerprintVerifier::new(fp)))
+            .with_no_client_auth(),
+    );
+    let connector = TlsConnector::from(tls_config);
+    let server_name = tls::server_name_from_host(host)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+    let tls_stream = connector.connect(server_name, tcp).await.map_err(|e| {
         let msg = e.to_string();
-        // Give a clear hint when the server is likely running without TLS.
-        let hint = if msg.contains("InvalidContentType") || msg.contains("corrupt") {
-            " (hint: server may not have TLS enabled — use ws:// instead of wss://)"
+        let hint = if msg.contains("InvalidContentType") || msg.contains("UnexpectedMessage") {
+            ". The server may be listening with ws:// (no --tls) while you used wss://; \
+             confirm ws-server.log shows `listening on wss://` and `auth: password`"
+        } else if msg.contains("fingerprint mismatch") {
+            ". Re-copy --fingerprint from the server after restarting ws-server"
         } else {
             ""
         };
         io::Error::new(
             io::ErrorKind::ConnectionRefused,
-            format!("wss:// connect failed: {e}{hint}"),
+            format!("TLS handshake to {addr} failed: {msg}{hint}"),
         )
-    };
+    })?;
 
-    if let Some(fp_str) = &config.fingerprint {
-        // Custom TLS: skip chain validation, pin by SHA-256 fingerprint.
-        let fp = tls::parse_fingerprint(fp_str)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-
-        let tls_config = rustls::ClientConfig::builder()
-            .dangerous()
-            .with_custom_certificate_verifier(Arc::new(tls::FingerprintVerifier::new(fp)))
-            .with_no_client_auth();
-
-        let connector = tokio_tungstenite::Connector::Rustls(Arc::new(tls_config));
-        let (ws, _) =
-            tokio_tungstenite::connect_async_tls_with_config(request, None, false, Some(connector))
-                .await
-                .map_err(map_tls_err)?;
-        Ok(ws)
-    } else {
-        // Standard TLS: validate with system certificate roots.
-        let (ws, _) = tokio_tungstenite::connect_async(request)
-            .await
-            .map_err(map_tls_err)?;
-        Ok(ws)
-    }
+    let stream = MaybeTlsStream::Rustls(tls_stream);
+    let (ws, _) = client_async(request, stream).await.map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::ConnectionRefused,
+            format!("WebSocket upgrade after TLS: {e}"),
+        )
+    })?;
+    Ok(ws)
 }
 
 async fn bridge_stdio(mut ws: WsStream, config: &WsBridgeConfig) -> io::Result<()> {

@@ -73,33 +73,36 @@ pub struct Config {
     pub server: ServerConfig,
 }
 
-/// Settings for the optional `herdr ws-server` background gateway.
+/// Settings for the optional `herdr ws-server` background gateway (`[server]`).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
     /// Whether the WebSocket gateway should be started in the background.
-    pub ws_enabled: bool,
+    #[serde(alias = "ws_enabled")]
+    pub enabled: bool,
     /// TCP port for the gateway (default 8090).
-    pub ws_port: u16,
-    /// Optional bearer password required from clients. If unset, the gateway
+    #[serde(alias = "ws_port")]
+    pub port: u16,
+    /// Bearer password required from clients. If unset, the gateway
     /// auto-generates one on the first enable.
-    pub ws_password: Option<String>,
+    #[serde(alias = "ws_password")]
+    pub password: Option<String>,
     /// SHA-256 TLS certificate fingerprint (`SHA256:...`) for `wss://`.
-    pub ws_fingerprint: Option<String>,
+    #[serde(alias = "ws_fingerprint")]
+    pub fingerprint: Option<String>,
     /// Whether the gateway listens with TLS (`wss://`). Default: true.
-    /// When true the gateway auto-generates a self-signed certificate and
-    /// clients must pin the SHA-256 fingerprint via `--fingerprint`.
-    pub ws_tls: bool,
+    #[serde(alias = "ws_tls")]
+    pub tls: bool,
 }
 
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            ws_enabled: false,
-            ws_port: 8090,
-            ws_password: None,
-            ws_fingerprint: None,
-            ws_tls: true,
+            enabled: false,
+            port: 8090,
+            password: None,
+            fingerprint: None,
+            tls: true,
         }
     }
 }

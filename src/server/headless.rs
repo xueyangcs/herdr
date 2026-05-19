@@ -2178,20 +2178,20 @@ pub fn run_server() -> io::Result<()> {
     let no_session = false; // Server always does session persistence.
 
     // Auto-start the WebSocket gateway if the user opted in via Settings or
-    // by editing config.toml. If `[server] ws_enabled = true` but no password
+    // by editing config.toml. If `[server] enabled = true` but no password
     // is set, generate one and persist it so the gateway is never exposed
     // with no authentication.
-    if loaded_config.config.server.ws_enabled && !crate::ws_transport::control::is_running() {
-        let port = loaded_config.config.server.ws_port;
-        let tls = loaded_config.config.server.ws_tls;
-        if tls && loaded_config.config.server.ws_fingerprint.is_none() {
+    if loaded_config.config.server.enabled && !crate::ws_transport::control::is_running() {
+        let port = loaded_config.config.server.port;
+        let tls = loaded_config.config.server.tls;
+        if tls && loaded_config.config.server.fingerprint.is_none() {
             match crate::ws_transport::tls::ensure_default_cert_and_read_fingerprint() {
                 Ok(fp) => {
                     if let Err(err) = crate::config::persist_server_fingerprint(&fp) {
                         warn!(error = %err, "could not persist ws-server TLS fingerprint");
                     } else {
                         info!(
-                            "auto-generated ws-server TLS fingerprint (see config.toml [server].ws_fingerprint)"
+                            "auto-generated ws-server TLS fingerprint (see config.toml [server].fingerprint)"
                         );
                     }
                 }
@@ -2200,7 +2200,7 @@ pub fn run_server() -> io::Result<()> {
                 }
             }
         }
-        let password = match loaded_config.config.server.ws_password.clone() {
+        let password = match loaded_config.config.server.password.clone() {
             Some(pw) => Some(pw),
             None => match crate::ws_transport::control::generate_password() {
                 Ok(pw) => {
@@ -2208,7 +2208,7 @@ pub fn run_server() -> io::Result<()> {
                         warn!(error = %err, "could not persist generated ws-server password");
                     }
                     info!(
-                        "auto-generated ws-server password (see config.toml [server].ws_password)"
+                        "auto-generated ws-server password (see config.toml [server].password)"
                     );
                     Some(pw)
                 }
@@ -2229,7 +2229,7 @@ pub fn run_server() -> io::Result<()> {
             }
             None => {
                 warn!(
-                    "ws-server not started: no password available (set [server] ws_password)"
+                    "ws-server not started: no password available (set [server] password)"
                 );
             }
         }

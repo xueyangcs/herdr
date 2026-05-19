@@ -254,7 +254,7 @@ pub(crate) fn upsert_top_level_bool(content: &str, key: &str, value: bool) -> St
 
 /// Write a key = value pair in a TOML section (creates section if missing).
 /// Persist a freshly generated ws-server password into `config.toml`.
-/// Used by the headless server when `[server] ws_enabled = true` but no
+/// Used by the headless server when `[server] enabled = true` but no
 /// password is set, so we never expose the gateway without auth.
 pub fn persist_server_fingerprint(fingerprint: &str) -> std::io::Result<()> {
     let path = config_path();
@@ -265,7 +265,7 @@ pub fn persist_server_fingerprint(fingerprint: &str) -> std::io::Result<()> {
     let updated = upsert_section_value(
         &existing,
         "server",
-        "ws_fingerprint",
+        "fingerprint",
         &format!("\"{fingerprint}\""),
     );
     std::fs::write(&path, updated)
@@ -280,7 +280,7 @@ pub fn persist_server_password(password: &str) -> std::io::Result<()> {
     let updated = upsert_section_value(
         &existing,
         "server",
-        "ws_password",
+        "password",
         &format!("\"{password}\""),
     );
     std::fs::write(&path, updated)

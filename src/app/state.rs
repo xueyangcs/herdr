@@ -958,7 +958,7 @@ pub struct AppState {
     pub sound: SoundConfig,
     pub local_sound_playback: bool,
     pub toast_config: ToastConfig,
-    /// `[server]` config: ws-server port, password, default enabled state.
+    /// `[server]` config: gateway port, password, enabled state.
     pub server_config: ServerConfig,
     pub keybinds: Keybinds,
     /// Frame counter for spinner animations (wraps around).

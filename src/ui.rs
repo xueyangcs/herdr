@@ -49,8 +49,8 @@ use self::tabs::render_tab_bar;
 pub(crate) use self::{
     dialogs::{confirm_close_button_rects, confirm_close_popup_rect, rename_button_rects},
     settings::{
-        server_connect_command, server_settings_item_count, settings_button_rects, SERVER_IDX_COMMAND,
-        SERVER_IDX_OFF, SERVER_IDX_ON, SERVER_IDX_PORT,
+        server_settings_item_count, settings_button_rects, SERVER_IDX_OFF, SERVER_IDX_ON,
+        SERVER_IDX_PORT,
     },
     sidebar::{
         agent_panel_body_rect, agent_panel_entries, agent_panel_scroll_metrics,
