@@ -111,13 +111,29 @@ impl App {
         // Default to TLS on first enable. Pre-generate the self-signed cert
         // so the Settings UI can show its SHA-256 fingerprint immediately.
         if enabled && self.state.server_config.ws_tls {
-            if let Err(err) = crate::ws_transport::tls::ensure_default_cert_and_read_fingerprint() {
-                self.state.config_diagnostic = Some(format!(
-                    "could not prepare ws-server TLS certificate: {err}"
-                ));
-                self.config_diagnostic_deadline =
-                    Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
-                return;
+            match crate::ws_transport::tls::ensure_default_cert_and_read_fingerprint() {
+                Ok(fp) => {
+                    if self.state.server_config.ws_fingerprint.is_none() {
+                        if self.update_config_file("server.ws_fingerprint", |content| {
+                            crate::config::upsert_section_value(
+                                content,
+                                "server",
+                                "ws_fingerprint",
+                                &format!("\"{fp}\""),
+                            )
+                        }) {
+                            self.state.server_config.ws_fingerprint = Some(fp);
+                        }
+                    }
+                }
+                Err(err) => {
+                    self.state.config_diagnostic = Some(format!(
+                        "could not prepare ws-server TLS certificate: {err}"
+                    ));
+                    self.config_diagnostic_deadline =
+                        Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+                    return;
+                }
             }
         }
 
@@ -149,6 +165,7 @@ impl App {
             return;
         }
 
+        self.state.server_config.ws_enabled = enabled;
         if self.update_config_file("server.ws_enabled", |content| {
             crate::config::upsert_section_bool(content, "server", "ws_enabled", enabled)
         }) {

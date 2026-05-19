@@ -66,6 +66,18 @@ impl App {
                     Mode::RenameWorkspace | Mode::RenameTab | Mode::RenamePane => {
                         handle_rename_key(&mut self.state, key)
                     }
+                    Mode::SettingsServerPort => {
+                        if let Some(action) =
+                            super::settings::handle_settings_server_port_key(&mut self.state, key)
+                        {
+                            match action {
+                                super::settings::SettingsAction::SaveServerPort(port) => {
+                                    self.save_ws_server_port(port);
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
                     Mode::Resize => handle_resize_key(&mut self.state, key),
                     Mode::ConfirmClose => handle_confirm_close_key(&mut self.state, key),
                     Mode::ContextMenu => handle_context_menu_key(&mut self.state, key),
@@ -164,6 +176,9 @@ impl App {
                 }
                 SettingsAction::SaveServerEnabled(enabled) => self.save_ws_server_enabled(enabled),
                 SettingsAction::SaveServerPort(port) => self.save_ws_server_port(port),
+                SettingsAction::CopyServerConnectCommand(cmd) => {
+                    self.copy_server_connect_command(&cmd);
+                }
             }
         }
         if self.state.agent_panel_scope != previous_agent_panel_scope {

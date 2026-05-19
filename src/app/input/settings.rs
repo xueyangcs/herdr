@@ -3,7 +3,7 @@ use ratatui::layout::Rect;
 
 use crate::{
     app::{
-        state::{AppState, SettingsSection, THEME_NAMES},
+        state::{AppState, SettingsSection, ToastKind, ToastNotification, THEME_NAMES},
         App, Mode,
     },
     config::ToastDelivery,
@@ -19,6 +19,7 @@ pub(super) enum SettingsAction {
     SaveAgentBorderLabels(bool),
     SaveServerEnabled(bool),
     SaveServerPort(u16),
+    CopyServerConnectCommand(String),
 }
 
 impl App {
@@ -33,18 +34,31 @@ impl App {
                 }
                 SettingsAction::SaveServerEnabled(enabled) => self.save_ws_server_enabled(enabled),
                 SettingsAction::SaveServerPort(port) => self.save_ws_server_port(port),
+                SettingsAction::CopyServerConnectCommand(cmd) => {
+                    self.copy_server_connect_command(&cmd);
+                }
             }
         }
     }
+
+    fn copy_server_connect_command(&mut self, cmd: &str) {
+        self.state.request_clipboard_write = Some(cmd.as_bytes().to_vec());
+        let previous_toast = self.state.toast.clone();
+        self.state.toast = Some(ToastNotification {
+            kind: ToastKind::Finished,
+            title: "copied to clipboard".to_string(),
+            context: "remote connect command".to_string(),
+            target: None,
+        });
+        self.sync_toast_deadline(previous_toast);
+    }
 }
 
-/// Default selection on the Server settings tab: highlight the toggle's
-/// current side (on if running, off if not).
-fn server_default_selection(_state: &AppState) -> usize {
-    if crate::ws_transport::control::is_running() {
-        crate::ui::SERVER_TOGGLE_ON_IDX
+fn server_default_selection(state: &AppState) -> usize {
+    if state.server_config.ws_enabled {
+        crate::ui::SERVER_IDX_ON
     } else {
-        crate::ui::SERVER_TOGGLE_OFF_IDX
+        crate::ui::SERVER_IDX_OFF
     }
 }
 
@@ -112,6 +126,70 @@ fn apply_settings(state: &mut AppState) -> Option<SettingsAction> {
             None
         }
     }
+}
+
+pub(crate) fn open_settings_server_port(state: &mut AppState) {
+    state.name_input = state.server_config.ws_port.to_string();
+    state.name_input_replace_on_type = true;
+    state.mode = Mode::SettingsServerPort;
+}
+
+pub(crate) fn handle_settings_server_port_key(
+    state: &mut AppState,
+    key: KeyEvent,
+) -> Option<SettingsAction> {
+    use super::modal::{modal_action_from_key, ModalAction, RENAME_ACTIONS};
+
+    if let Some(action) = modal_action_from_key(&key, RENAME_ACTIONS) {
+        match action {
+            ModalAction::Save => {
+                let port = match state.name_input.trim().parse::<u16>() {
+                    Ok(port) if port > 0 => port,
+                    _ => {
+                        state.config_diagnostic =
+                            Some("port must be a number between 1 and 65535".to_string());
+                        return None;
+                    }
+                };
+                state.name_input.clear();
+                state.name_input_replace_on_type = false;
+                state.mode = Mode::Settings;
+                return Some(SettingsAction::SaveServerPort(port));
+            }
+            ModalAction::Cancel => {
+                state.name_input.clear();
+                state.name_input_replace_on_type = false;
+                state.mode = Mode::Settings;
+            }
+            ModalAction::Clear => {
+                state.name_input.clear();
+                state.name_input_replace_on_type = false;
+            }
+            _ => {}
+        }
+        return None;
+    }
+
+    match key.code {
+        KeyCode::Backspace => {
+            if state.name_input_replace_on_type {
+                state.name_input.clear();
+                state.name_input_replace_on_type = false;
+            } else {
+                state.name_input.pop();
+            }
+        }
+        KeyCode::Char(c) if c.is_ascii_digit() && state.name_input.len() < 5 => {
+            if state.name_input_replace_on_type {
+                state.name_input.clear();
+                state.name_input_replace_on_type = false;
+            }
+            state.name_input.push(c);
+        }
+        _ => {}
+    }
+
+    None
 }
 
 pub(super) fn update_settings_state(state: &mut AppState, key: KeyEvent) -> Option<SettingsAction> {
@@ -213,55 +291,44 @@ pub(super) fn update_settings_state(state: &mut AppState, key: KeyEvent) -> Opti
             }
         },
         SettingsSection::Server => {
-            let presets_len = crate::ui::SERVER_PORT_PRESETS.len();
-            let toggle_on = crate::ui::SERVER_TOGGLE_ON_IDX;
-            let toggle_off = crate::ui::SERVER_TOGGLE_OFF_IDX;
+            let item_count = crate::ui::server_settings_item_count(&state.server_config);
             let sel = state.settings.list.selected;
             match key.code {
                 KeyCode::Up | KeyCode::Char('k') => {
-                    if sel >= toggle_on {
-                        // Toggle row → port row at index 0
-                        state.settings.list.selected = 0;
+                    if sel > 0 {
+                        state.settings.list.selected -= 1;
                     }
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    if sel < presets_len {
-                        state.settings.list.selected = if crate::ws_transport::control::is_running()
-                        {
-                            toggle_off
-                        } else {
-                            toggle_on
-                        };
-                    }
-                }
-                KeyCode::Left | KeyCode::Char('h') => {
-                    if sel < presets_len && sel > 0 {
-                        state.settings.list.selected -= 1;
-                    } else if sel == toggle_off {
-                        state.settings.list.selected = toggle_on;
-                    }
-                }
-                KeyCode::Right | KeyCode::Char('l') => {
-                    if sel < presets_len && sel + 1 < presets_len {
+                    if sel + 1 < item_count {
                         state.settings.list.selected += 1;
-                    } else if sel == toggle_on {
-                        state.settings.list.selected = toggle_off;
                     }
                 }
-                KeyCode::Enter | KeyCode::Char(' ') => {
-                    if sel < presets_len {
-                        let port = crate::ui::SERVER_PORT_PRESETS[sel];
-                        return Some(SettingsAction::SaveServerPort(port));
+                KeyCode::Enter | KeyCode::Char(' ') => match sel {
+                    crate::ui::SERVER_IDX_ON => {
+                        return Some(SettingsAction::SaveServerEnabled(true));
                     }
-                    let enabled = sel == toggle_on;
-                    return Some(SettingsAction::SaveServerEnabled(enabled));
-                }
-                KeyCode::BackTab => {
+                    crate::ui::SERVER_IDX_OFF => {
+                        return Some(SettingsAction::SaveServerEnabled(false));
+                    }
+                    crate::ui::SERVER_IDX_PORT if state.server_config.ws_enabled => {
+                        open_settings_server_port(state);
+                    }
+                    crate::ui::SERVER_IDX_COMMAND => {
+                        if let Some(cmd) =
+                            crate::ui::server_connect_command(&state.server_config)
+                        {
+                            return Some(SettingsAction::CopyServerConnectCommand(cmd));
+                        }
+                    }
+                    _ => {}
+                },
+                KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
                     state.settings.section = SettingsSection::PaneLabels;
                     state.settings.list.selected =
                         usize::from(!state.agent_border_labels_enabled());
                 }
-                KeyCode::Tab => {
+                KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
                     state.settings.section = SettingsSection::Theme;
                     state.settings.list.selected = current_theme_index(&state.theme_name);
                 }
@@ -342,7 +409,7 @@ impl AppState {
                 let idx = scroll + (row - area.y) as usize;
                 (idx < THEME_NAMES.len()).then_some(idx)
             }
-            SettingsSection::Sound => {
+            SettingsSection::Sound | SettingsSection::PaneLabels => {
                 let list_y = area.y + 3;
                 if row >= list_y && row < list_y + 2 {
                     Some((row - list_y) as usize)
@@ -358,29 +425,14 @@ impl AppState {
                     None
                 }
             }
-            SettingsSection::PaneLabels => {
-                let list_y = area.y + 3;
-                if row >= list_y && row < list_y + 2 {
-                    Some((row - list_y) as usize)
-                } else {
-                    None
-                }
-            }
             SettingsSection::Server => {
-                // Server tab has a richer layout (title, description, port
-                // presets row, details, toggle). Mouse-based selection is
-                // intentionally limited to the keyboard for clarity; we only
-                // return Some for the toggle row at the bottom so clicking
-                // there flips on/off.
-                if row + 1 == area.y + area.height {
-                    if col < area.x + area.width / 2 {
-                        Some(crate::ui::SERVER_TOGGLE_ON_IDX)
-                    } else {
-                        Some(crate::ui::SERVER_TOGGLE_OFF_IDX)
-                    }
-                } else {
-                    None
+                let list_y = area.y + 3;
+                if row < list_y {
+                    return None;
                 }
+                let idx = (row - list_y) as usize;
+                let item_count = crate::ui::server_settings_item_count(&self.server_config);
+                (idx < item_count).then_some(idx)
             }
         }
     }
@@ -420,15 +472,24 @@ impl AppState {
                             let enabled = idx == 0;
                             Some(SettingsAction::SaveAgentBorderLabels(enabled))
                         }
-                        SettingsSection::Server => {
-                            if idx < crate::ui::SERVER_PORT_PRESETS.len() {
-                                let port = crate::ui::SERVER_PORT_PRESETS[idx];
-                                Some(SettingsAction::SaveServerPort(port))
-                            } else {
-                                let enabled = idx == crate::ui::SERVER_TOGGLE_ON_IDX;
-                                Some(SettingsAction::SaveServerEnabled(enabled))
+                        SettingsSection::Server => match idx {
+                            crate::ui::SERVER_IDX_ON => {
+                                Some(SettingsAction::SaveServerEnabled(true))
                             }
-                        }
+                            crate::ui::SERVER_IDX_OFF => {
+                                Some(SettingsAction::SaveServerEnabled(false))
+                            }
+                            crate::ui::SERVER_IDX_PORT if self.server_config.ws_enabled => {
+                                open_settings_server_port(self);
+                                None
+                            }
+                            crate::ui::SERVER_IDX_COMMAND => {
+                                crate::ui::server_connect_command(&self.server_config).map(
+                                    SettingsAction::CopyServerConnectCommand,
+                                )
+                            }
+                            _ => None,
+                        },
                     };
                 }
 

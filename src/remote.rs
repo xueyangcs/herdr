@@ -33,9 +33,9 @@ pub(crate) struct RemoteLaunch {
 /// Extra flags that apply only when `--remote` is a WebSocket URL.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct WsLaunchConfig {
-    /// Bearer password (`--ws-password`).
+    /// Bearer password (`--password`).
     pub(crate) password: Option<String>,
-    /// Expected TLS cert fingerprint (`--ws-fingerprint`).
+    /// Expected TLS cert fingerprint (`--fingerprint`).
     pub(crate) fingerprint: Option<String>,
     /// Use SSH public-key challenge-response (`--ws-pubkey-auth`).
     pub(crate) pubkey_auth: bool,
@@ -109,13 +109,23 @@ pub(crate) fn extract_remote_args(
         }
 
         // WS-specific flags (consumed here, not passed to herdr client)
-        if arg == "--ws-password" {
+        if arg == "--password" || arg == "--ws-password" {
+            let flag = if arg == "--password" {
+                "--password"
+            } else {
+                "--ws-password"
+            };
             ws_cfg.password = Some(
                 args.get(index + 1)
-                    .ok_or("--ws-password requires a value")?
+                    .ok_or(format!("{flag} requires a value"))?
                     .clone(),
             );
             index += 2;
+            continue;
+        }
+        if let Some(v) = arg.strip_prefix("--password=") {
+            ws_cfg.password = Some(v.to_string());
+            index += 1;
             continue;
         }
         if let Some(v) = arg.strip_prefix("--ws-password=") {
@@ -123,13 +133,23 @@ pub(crate) fn extract_remote_args(
             index += 1;
             continue;
         }
-        if arg == "--ws-fingerprint" {
+        if arg == "--fingerprint" || arg == "--ws-fingerprint" {
+            let flag = if arg == "--fingerprint" {
+                "--fingerprint"
+            } else {
+                "--ws-fingerprint"
+            };
             ws_cfg.fingerprint = Some(
                 args.get(index + 1)
-                    .ok_or("--ws-fingerprint requires a value")?
+                    .ok_or(format!("{flag} requires a value"))?
                     .clone(),
             );
             index += 2;
+            continue;
+        }
+        if let Some(v) = arg.strip_prefix("--fingerprint=") {
+            ws_cfg.fingerprint = Some(v.to_string());
+            index += 1;
             continue;
         }
         if let Some(v) = arg.strip_prefix("--ws-fingerprint=") {
@@ -231,10 +251,10 @@ fn ws_reattach_command(
         cmd.push_str(&format!(" --session {}", shell_quote(session_name)));
     }
     if let Some(password) = &ws_cfg.password {
-        cmd.push_str(&format!(" --ws-password {}", shell_quote(password)));
+        cmd.push_str(&format!(" --password {}", shell_quote(password)));
     }
     if let Some(fp) = &ws_cfg.fingerprint {
-        cmd.push_str(&format!(" --ws-fingerprint {}", shell_quote(fp)));
+        cmd.push_str(&format!(" --fingerprint {}", shell_quote(fp)));
     }
     if ws_cfg.pubkey_auth {
         cmd.push_str(" --ws-pubkey-auth");

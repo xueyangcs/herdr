@@ -2184,6 +2184,22 @@ pub fn run_server() -> io::Result<()> {
     if loaded_config.config.server.ws_enabled && !crate::ws_transport::control::is_running() {
         let port = loaded_config.config.server.ws_port;
         let tls = loaded_config.config.server.ws_tls;
+        if tls && loaded_config.config.server.ws_fingerprint.is_none() {
+            match crate::ws_transport::tls::ensure_default_cert_and_read_fingerprint() {
+                Ok(fp) => {
+                    if let Err(err) = crate::config::persist_server_fingerprint(&fp) {
+                        warn!(error = %err, "could not persist ws-server TLS fingerprint");
+                    } else {
+                        info!(
+                            "auto-generated ws-server TLS fingerprint (see config.toml [server].ws_fingerprint)"
+                        );
+                    }
+                }
+                Err(err) => {
+                    warn!(error = %err, "could not prepare ws-server TLS certificate");
+                }
+            }
+        }
         let password = match loaded_config.config.server.ws_password.clone() {
             Some(pw) => Some(pw),
             None => match crate::ws_transport::control::generate_password() {

@@ -184,6 +184,14 @@ fn load_live_config_from_str(content: &str) -> Result<LoadedConfig, Vec<String>>
         &mut invalid_sections,
         |section| config.experimental = section,
     );
+    load_live_section(
+        table,
+        "server",
+        "server config",
+        &mut diagnostics,
+        &mut invalid_sections,
+        |section| config.server = section,
+    );
 
     Ok(LoadedConfig {
         config,
@@ -248,6 +256,21 @@ pub(crate) fn upsert_top_level_bool(content: &str, key: &str, value: bool) -> St
 /// Persist a freshly generated ws-server password into `config.toml`.
 /// Used by the headless server when `[server] ws_enabled = true` but no
 /// password is set, so we never expose the gateway without auth.
+pub fn persist_server_fingerprint(fingerprint: &str) -> std::io::Result<()> {
+    let path = config_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let updated = upsert_section_value(
+        &existing,
+        "server",
+        "ws_fingerprint",
+        &format!("\"{fingerprint}\""),
+    );
+    std::fs::write(&path, updated)
+}
+
 pub fn persist_server_password(password: &str) -> std::io::Result<()> {
     let path = config_path();
     if let Some(parent) = path.parent() {

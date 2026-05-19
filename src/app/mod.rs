@@ -966,6 +966,16 @@ impl App {
             Mode::RenameWorkspace | Mode::RenameTab | Mode::RenamePane => {
                 input::handle_rename_key(&mut self.state, key_event);
             }
+            Mode::SettingsServerPort => {
+                if let Some(super::input::settings::SettingsAction::SaveServerPort(port)) =
+                    super::input::settings::handle_settings_server_port_key(
+                        &mut self.state,
+                        key_event,
+                    )
+                {
+                    self.save_ws_server_port(port);
+                }
+            }
             Mode::Resize => {
                 input::handle_resize_key(&mut self.state, key_event);
             }

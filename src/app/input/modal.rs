@@ -219,6 +219,12 @@ pub(super) fn open_new_tab_dialog(state: &mut AppState) {
 }
 
 pub(super) fn leave_modal(state: &mut AppState) {
+    if state.mode == Mode::SettingsServerPort {
+        state.name_input.clear();
+        state.name_input_replace_on_type = false;
+        state.mode = Mode::Settings;
+        return;
+    }
     if state.active.is_some() {
         state.mode = Mode::Terminal;
     } else {

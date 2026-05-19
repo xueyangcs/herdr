@@ -7,25 +7,50 @@ use ratatui::{
 };
 
 use super::widgets::{
-    action_button_row_rects, centered_popup_rect, modal_stack_areas, panel_contrast_fg,
-    render_action_button, render_modal_choice_list, render_panel_shell, ActionButtonSpec,
+    action_button_row_rects, centered_popup_rect, modal_choice_rows, modal_stack_areas,
+    panel_contrast_fg, render_action_button, render_modal_choice_list, render_modal_description,
+    render_panel_shell, ActionButtonSpec,
 };
 use crate::{
     app::{state::Palette, AppState},
-    config::ToastDelivery,
+    config::{ServerConfig, ToastDelivery},
 };
 
-/// Preset ports shown on the Server tab. Users can pick one with Left/Right
-/// arrows; anyone needing something exotic edits `[server] ws_port` in
-/// `config.toml` directly.
-pub(crate) const SERVER_PORT_PRESETS: &[u16] = &[8080, 8081, 8443, 8888];
+/// Server tab: on/off toggle rows (same pattern as sound settings).
+pub(crate) const SERVER_IDX_ON: usize = 0;
+pub(crate) const SERVER_IDX_OFF: usize = 1;
+/// Shown below the toggle when `ws_enabled` is true.
+pub(crate) const SERVER_IDX_PORT: usize = 2;
+/// Shown when the gateway is configured and a connect command is available.
+pub(crate) const SERVER_IDX_COMMAND: usize = 3;
 
-/// Selection encoding for the Server tab in Settings.
-/// 0..PRESETS.len() = port preset index
-/// PRESETS.len()    = toggle "on"
-/// PRESETS.len()+1  = toggle "off"
-pub(crate) const SERVER_TOGGLE_ON_IDX: usize = SERVER_PORT_PRESETS.len();
-pub(crate) const SERVER_TOGGLE_OFF_IDX: usize = SERVER_PORT_PRESETS.len() + 1;
+pub(crate) fn server_settings_item_count(config: &ServerConfig) -> usize {
+    if !config.ws_enabled {
+        return 2;
+    }
+    if server_connect_command(config).is_some() {
+        4
+    } else {
+        3
+    }
+}
+
+pub(crate) fn server_connect_command(config: &ServerConfig) -> Option<String> {
+    if !config.ws_enabled {
+        return None;
+    }
+    let password = config.ws_password.as_ref()?;
+    let scheme = if config.ws_tls { "wss" } else { "ws" };
+    let mut cmd = format!(
+        "herdr --remote {scheme}://<your-host>:{} --password {password}",
+        config.ws_port
+    );
+    if config.ws_tls {
+        let fingerprint = config.ws_fingerprint.as_ref()?;
+        cmd.push_str(&format!(" --fingerprint {fingerprint}"));
+    }
+    Some(cmd)
+}
 
 pub(super) fn render_settings_overlay(app: &AppState, frame: &mut Frame, area: Rect) {
     use crate::app::state::SettingsSection;
@@ -244,169 +269,79 @@ fn render_settings_toggle(
     );
 }
 
-/// Renders the Server tab: title, description, port preset row, password and
-/// TLS fingerprint, the ready-to-paste connection command, and the on/off
-/// toggle at the bottom. Selection encoding follows `SERVER_TOGGLE_*` /
-/// `SERVER_PORT_PRESETS` constants above.
 fn render_settings_server(app: &AppState, frame: &mut Frame, area: Rect) {
     let p = &app.palette;
-    let running = crate::ws_transport::control::is_running();
-    let current_port = app.server_config.ws_port;
-    let pw = app.server_config.ws_password.as_deref().unwrap_or("");
-    let tls = app.server_config.ws_tls;
-    let scheme = if tls { "wss" } else { "ws" };
-    let fingerprint = if tls {
-        crate::ws_transport::tls::ensure_default_cert_and_read_fingerprint().ok()
-    } else {
-        None
-    };
+    let config = &app.server_config;
+    let enabled = config.ws_enabled;
     let selected = app.settings.list.selected;
 
-    // Layout:
-    //   title (1)  description (1)  blank (1)
-    //   port row (1)
-    //   blank (1)
-    //   details (variable)
-    //   toggle row (1)
-    let lines = [
-        Constraint::Length(1), // title
-        Constraint::Length(1), // description
-        Constraint::Length(1), // blank
-        Constraint::Length(1), // port row label
-        Constraint::Length(1), // port choices
-        Constraint::Length(1), // blank
-        Constraint::Min(1),    // details (password, fp, command)
-        Constraint::Length(1), // toggle
+    let [desc_area, _, list_area] = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Length(1),
+        Constraint::Min(2),
+    ])
+    .areas::<3>(area);
+
+    render_modal_description(
+        frame,
+        desc_area,
+        "expose this herdr session over wss:// for remote clients (TLS on by default)",
+        Style::default().fg(p.overlay1),
+    );
+
+    enum ServerRow {
+        Toggle { label: &'static str, value: bool },
+        Port,
+        Command(String),
+    }
+
+    let mut rows: Vec<ServerRow> = vec![
+        ServerRow::Toggle {
+            label: "on",
+            value: true,
+        },
+        ServerRow::Toggle {
+            label: "off",
+            value: false,
+        },
     ];
-    let rows = Layout::vertical(lines).split(area);
+    if enabled {
+        rows.push(ServerRow::Port);
+        if let Some(cmd) = server_connect_command(config) {
+            rows.push(ServerRow::Command(cmd));
+        }
+    }
 
-    let title_style = Style::default().fg(p.text).add_modifier(Modifier::BOLD);
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled("remote ws-server", title_style))),
-        rows[0],
-    );
-
-    let desc = format!(
-        "Expose this herdr session over {scheme}:// (TLS on by default). \
-         Password and fingerprint are auto-generated."
-    );
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            desc,
-            Style::default().fg(p.overlay1),
-        )))
-        .wrap(Wrap { trim: true }),
-        rows[1],
-    );
-
-    // Port row label
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            "port",
-            Style::default().fg(p.overlay0),
-        ))),
-        rows[3],
-    );
-
-    // Port preset choices (horizontal)
-    let mut port_spans: Vec<Span> = Vec::new();
-    port_spans.push(Span::styled(" ", Style::default()));
-    for (i, &port) in SERVER_PORT_PRESETS.iter().enumerate() {
-        let is_current = port == current_port;
-        let is_selected = selected == i;
-        let label = if is_current {
-            format!(" {port}* ")
-        } else {
-            format!(" {port} ")
+    let choice_rows = modal_choice_rows(list_area, rows.len(), 1);
+    for (idx, (row_kind, row_rect)) in rows.iter().zip(choice_rows.iter()).enumerate() {
+        let (text, is_active) = match row_kind {
+            ServerRow::Toggle { label, value } => {
+                let marker = if *value == enabled { " ✓" } else { "" };
+                (format!(" wss-server: {label}{marker}"), *value == enabled)
+            }
+            ServerRow::Port => (format!(" port  {}", config.ws_port), false),
+            ServerRow::Command(cmd) => (format!(" {cmd}"), false),
         };
+        let is_selected = idx == selected;
         let style = if is_selected {
             Style::default()
-                .fg(panel_contrast_fg(p))
-                .bg(p.accent)
+                .bg(p.surface0)
+                .fg(if matches!(row_kind, ServerRow::Command(_)) {
+                    p.green
+                } else {
+                    p.text
+                })
                 .add_modifier(Modifier::BOLD)
-        } else if is_current {
+        } else if is_active {
             Style::default().fg(p.text).add_modifier(Modifier::BOLD)
+        } else if matches!(row_kind, ServerRow::Command(_)) {
+            Style::default().fg(p.green)
         } else {
             Style::default().fg(p.subtext0)
         };
-        port_spans.push(Span::styled(label, style));
+        frame.render_widget(
+            Paragraph::new(text).style(style).wrap(Wrap { trim: false }),
+            *row_rect,
+        );
     }
-    frame.render_widget(Paragraph::new(Line::from(port_spans)), rows[4]);
-
-    // Details: password, fingerprint, ready-to-paste connect command
-    let mut detail_lines: Vec<Line> = Vec::new();
-    let label_style = Style::default().fg(p.overlay0);
-    let value_style = Style::default().fg(p.text);
-    if !pw.is_empty() {
-        detail_lines.push(Line::from(vec![
-            Span::styled("password:    ", label_style),
-            Span::styled(pw.to_string(), value_style),
-        ]));
-    }
-    if let Some(fp) = &fingerprint {
-        detail_lines.push(Line::from(vec![
-            Span::styled("fingerprint: ", label_style),
-            Span::styled(fp.clone(), value_style),
-        ]));
-    }
-    if running && !pw.is_empty() {
-        detail_lines.push(Line::from(""));
-        detail_lines.push(Line::from(Span::styled(
-            "connect from elsewhere (replace <your-host>):",
-            label_style,
-        )));
-        let mut cmd =
-            format!("  herdr --remote {scheme}://<your-host>:{current_port} --ws-password {pw}");
-        if let Some(fp) = &fingerprint {
-            cmd.push_str(&format!(" --ws-fingerprint {fp}"));
-        }
-        detail_lines.push(Line::from(Span::styled(cmd, Style::default().fg(p.green))));
-    } else if !running {
-        detail_lines.push(Line::from(Span::styled(
-            "toggle on below to start the gateway.",
-            Style::default().fg(p.overlay0),
-        )));
-    }
-    frame.render_widget(
-        Paragraph::new(detail_lines).wrap(Wrap { trim: false }),
-        rows[6],
-    );
-
-    // Toggle row at the bottom
-    let toggle_selected = if selected == SERVER_TOGGLE_OFF_IDX {
-        1
-    } else {
-        0
-    };
-    let toggle_spans = vec![
-        Span::styled(" ", Style::default()),
-        Span::styled(
-            " on ",
-            if toggle_selected == 0 && selected >= SERVER_TOGGLE_ON_IDX {
-                Style::default()
-                    .fg(panel_contrast_fg(p))
-                    .bg(p.accent)
-                    .add_modifier(Modifier::BOLD)
-            } else if running {
-                Style::default().fg(p.green).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(p.subtext0)
-            },
-        ),
-        Span::styled(" ", Style::default()),
-        Span::styled(
-            " off ",
-            if toggle_selected == 1 && selected >= SERVER_TOGGLE_ON_IDX {
-                Style::default()
-                    .fg(panel_contrast_fg(p))
-                    .bg(p.accent)
-                    .add_modifier(Modifier::BOLD)
-            } else if !running {
-                Style::default().fg(p.text).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(p.subtext0)
-            },
-        ),
-    ];
-    frame.render_widget(Paragraph::new(Line::from(toggle_spans)), rows[7]);
 }

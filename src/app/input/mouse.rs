@@ -1,5 +1,7 @@
 use bytes::Bytes;
-use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{
+    KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use ratatui::layout::{Direction, Rect};
 use tracing::warn;
 
@@ -158,6 +160,34 @@ impl AppState {
                         _ => {}
                     }
                     return None;
+                }
+
+                if self.mode == Mode::SettingsServerPort {
+                    let action = self
+                        .rename_modal_inner()
+                        .map(crate::ui::rename_button_rects)
+                        .and_then(|(save, clear, cancel)| {
+                            modal_action_from_buttons(
+                                mouse.column,
+                                mouse.row,
+                                &[
+                                    (save, ModalAction::Save),
+                                    (clear, ModalAction::Clear),
+                                    (cancel, ModalAction::Cancel),
+                                ],
+                            )
+                        })
+                        .unwrap_or(ModalAction::Cancel);
+                    let key = match action {
+                        ModalAction::Save => KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+                        ModalAction::Clear => KeyEvent::new(
+                            KeyCode::Char('c'),
+                            KeyModifiers::CONTROL,
+                        ),
+                        ModalAction::Cancel => KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()),
+                        _ => return None,
+                    };
+                    return super::settings::handle_settings_server_port_key(self, key);
                 }
 
                 if matches!(

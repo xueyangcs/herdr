@@ -156,4 +156,4 @@ echo
 info "make sure $INSTALL_DIR is in your PATH"
 info "next:  herdr --help"
 info "       herdr ws-server --port 8080 --password <pw>     # remote machine"
-info "       herdr --remote ws://host:8080 --ws-password <pw> # local machine"
+info "       herdr --remote wss://host:8090 --password <pw> --fingerprint <fp> # local machine"

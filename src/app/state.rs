@@ -597,6 +597,7 @@ pub enum Mode {
     ConfirmClose,
     ContextMenu,
     Settings,
+    SettingsServerPort,
     GlobalMenu,
     KeybindHelp,
 }

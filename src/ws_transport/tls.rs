@@ -146,7 +146,7 @@ fn load_tls_from_files(cert_path: &Path, key_path: &Path) -> io::Result<(Vec<u8>
 
     let fingerprint = cert_fingerprint(&first_cert_der);
     eprintln!("  TLS fingerprint: {fingerprint}");
-    eprintln!("  Pass to client:  --ws-fingerprint {fingerprint}");
+    eprintln!("  Pass to client:  --fingerprint {fingerprint}");
 
     Ok((first_cert_der, TlsAcceptor::from(Arc::new(server_config))))
 }

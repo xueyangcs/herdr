@@ -49,7 +49,8 @@ use self::tabs::render_tab_bar;
 pub(crate) use self::{
     dialogs::{confirm_close_button_rects, confirm_close_popup_rect, rename_button_rects},
     settings::{
-        settings_button_rects, SERVER_PORT_PRESETS, SERVER_TOGGLE_OFF_IDX, SERVER_TOGGLE_ON_IDX,
+        server_connect_command, server_settings_item_count, settings_button_rects, SERVER_IDX_COMMAND,
+        SERVER_IDX_OFF, SERVER_IDX_ON, SERVER_IDX_PORT,
     },
     sidebar::{
         agent_panel_body_rect, agent_panel_entries, agent_panel_scroll_metrics,
@@ -317,9 +318,10 @@ pub fn render(app: &AppState, frame: &mut Frame) {
             render_context_menu(app, frame);
         }
         Mode::Settings => render_settings_overlay(app, frame, frame.area()),
-        Mode::RenameWorkspace | Mode::RenameTab | Mode::RenamePane => {
-            render_rename_overlay(app, frame, frame.area())
-        }
+        Mode::RenameWorkspace
+        | Mode::RenameTab
+        | Mode::RenamePane
+        | Mode::SettingsServerPort => render_rename_overlay(app, frame, frame.area()),
         Mode::GlobalMenu => render_global_launcher_menu(app, frame),
         Mode::KeybindHelp => render_keybind_help_overlay(app, frame),
         Mode::Terminal => {}

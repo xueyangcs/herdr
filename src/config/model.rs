@@ -79,14 +79,16 @@ pub struct Config {
 pub struct ServerConfig {
     /// Whether the WebSocket gateway should be started in the background.
     pub ws_enabled: bool,
-    /// TCP port for the gateway (default 8080).
+    /// TCP port for the gateway (default 8090).
     pub ws_port: u16,
     /// Optional bearer password required from clients. If unset, the gateway
     /// auto-generates one on the first enable.
     pub ws_password: Option<String>,
+    /// SHA-256 TLS certificate fingerprint (`SHA256:...`) for `wss://`.
+    pub ws_fingerprint: Option<String>,
     /// Whether the gateway listens with TLS (`wss://`). Default: true.
     /// When true the gateway auto-generates a self-signed certificate and
-    /// clients must pin the SHA-256 fingerprint via `--ws-fingerprint`.
+    /// clients must pin the SHA-256 fingerprint via `--fingerprint`.
     pub ws_tls: bool,
 }
 
@@ -94,8 +96,9 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             ws_enabled: false,
-            ws_port: 8080,
+            ws_port: 8090,
             ws_password: None,
+            ws_fingerprint: None,
             ws_tls: true,
         }
     }

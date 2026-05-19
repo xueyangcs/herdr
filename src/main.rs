@@ -312,7 +312,7 @@ fn main() -> io::Result<()> {
         println!("       herdr --session <name> [options]");
         println!("       herdr --remote <ssh-target> [--session <name>]");
         println!(
-            "       herdr --remote <ws://host:port> [--ws-password <pw>] [--ws-fingerprint <fp>]"
+            "       herdr --remote <ws://host:port> [--password <pw>] [--fingerprint <fp>]"
         );
         println!(
             "       herdr --remote <wss://host:port> [--ws-pubkey-auth] [--ws-identity <key>]"
@@ -394,8 +394,8 @@ fn main() -> io::Result<()> {
         println!("  --session <name>    Use or create a named persistent session");
         println!("  --remote <target>   Attach through SSH to a remote Herdr server");
         println!("  --remote <ws-url>      Attach through WebSocket (ws:// or wss://)");
-        println!("  --ws-password <pw>     Bearer password for WebSocket auth");
-        println!("  --ws-fingerprint <fp>  TLS cert fingerprint for wss:// (SHA256:...)");
+        println!("  --password <pw>        Bearer password for WebSocket auth");
+        println!("  --fingerprint <fp>     TLS cert fingerprint for wss:// (SHA256:...)");
         println!("  --ws-pubkey-auth       Use SSH public-key auth over WebSocket");
         println!("  --ws-identity <key>    SSH private key for --ws-pubkey-auth");
         println!("  --default-config    Print default configuration and exit");
@@ -424,6 +424,8 @@ fn main() -> io::Result<()> {
         "--no-session",
         "--session",
         "--remote",
+        "--password",
+        "--fingerprint",
         "--ws-password",
         "--ws-fingerprint",
         "--ws-pubkey-auth",
@@ -435,7 +437,16 @@ fn main() -> io::Result<()> {
         "-h",
     ];
     for arg in &args[1..] {
-        if arg.starts_with('-') && !known_flags.contains(&arg.as_str()) {
+        if arg.starts_with('-')
+            && !known_flags.contains(&arg.as_str())
+            && !arg.starts_with("--password=")
+            && !arg.starts_with("--fingerprint=")
+            && !arg.starts_with("--ws-password=")
+            && !arg.starts_with("--ws-fingerprint=")
+            && !arg.starts_with("--ws-identity=")
+            && !arg.starts_with("--remote=")
+            && !arg.starts_with("--session=")
+        {
             eprintln!("unknown option: {arg}");
             eprintln!("run 'herdr --help' for usage");
             std::process::exit(1);
