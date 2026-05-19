@@ -403,7 +403,8 @@ impl AppState {
                 }
             }
             SettingsSection::Server => {
-                let list_y = area.y + 3;
+                // Matches render_settings_server: 3-line description + 1-line gap.
+                let list_y = area.y + 4;
                 if row < list_y {
                     return None;
                 }

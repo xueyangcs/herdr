@@ -9,7 +9,8 @@ mod theme;
 pub use self::{
     io::{
         config_diagnostic_summary, config_dir, config_path, load_live_config,
-        persist_server_fingerprint, persist_server_password, remove_section_key, state_dir,
+        persist_server_fingerprint, persist_server_password, remove_section_key,
+        scrub_legacy_server_keys, state_dir,
         upsert_section_bool, upsert_section_value,
     },
     keybinds::{
