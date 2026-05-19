@@ -41,7 +41,7 @@ impl App {
         }
     }
 
-    fn copy_server_connect_command(&mut self, cmd: &str) {
+    pub(super) fn copy_server_connect_command(&mut self, cmd: &str) {
         self.state.request_clipboard_write = Some(cmd.as_bytes().to_vec());
         let previous_toast = self.state.toast.clone();
         self.state.toast = Some(ToastNotification {

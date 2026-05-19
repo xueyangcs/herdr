@@ -37,7 +37,9 @@ pub(crate) use self::{
         handle_keybind_help_key, handle_rename_key, handle_resize_key,
     },
     navigate::terminal_direct_navigation_action,
-    settings::open_settings,
+    settings::{
+        handle_settings_server_port_key, open_settings, SettingsAction,
+    },
 };
 use self::{
     modal::{
@@ -67,15 +69,10 @@ impl App {
                         handle_rename_key(&mut self.state, key)
                     }
                     Mode::SettingsServerPort => {
-                        if let Some(action) =
-                            super::settings::handle_settings_server_port_key(&mut self.state, key)
+                        if let Some(SettingsAction::SaveServerPort(port)) =
+                            handle_settings_server_port_key(&mut self.state, key)
                         {
-                            match action {
-                                super::settings::SettingsAction::SaveServerPort(port) => {
-                                    self.save_ws_server_port(port);
-                                }
-                                _ => {}
-                            }
+                            self.save_ws_server_port(port);
                         }
                     }
                     Mode::Resize => handle_resize_key(&mut self.state, key),

@@ -967,8 +967,8 @@ impl App {
                 input::handle_rename_key(&mut self.state, key_event);
             }
             Mode::SettingsServerPort => {
-                if let Some(super::input::settings::SettingsAction::SaveServerPort(port)) =
-                    super::input::settings::handle_settings_server_port_key(
+                if let Some(crate::app::input::SettingsAction::SaveServerPort(port)) =
+                    crate::app::input::handle_settings_server_port_key(
                         &mut self.state,
                         key_event,
                     )
