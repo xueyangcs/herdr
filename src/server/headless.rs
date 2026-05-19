@@ -2218,10 +2218,20 @@ pub fn run_server() -> io::Result<()> {
                 }
             },
         };
-        if let Err(err) = crate::ws_transport::control::start(port, password.as_deref(), tls) {
-            warn!(error = %err, "failed to start ws-server gateway");
-        } else {
-            info!(port, tls, "ws-server gateway started in background");
+        match password {
+            Some(pw) => {
+                if let Err(err) = crate::ws_transport::control::start(port, Some(pw.as_str()), tls)
+                {
+                    warn!(error = %err, "failed to start ws-server gateway");
+                } else {
+                    info!(port, tls, "ws-server gateway started in background");
+                }
+            }
+            None => {
+                warn!(
+                    "ws-server not started: no password available (set [server] ws_password)"
+                );
+            }
         }
     }
 

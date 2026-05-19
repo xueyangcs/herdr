@@ -87,7 +87,8 @@ impl App {
         if enabled && self.state.server_config.ws_password.is_none() {
             match crate::ws_transport::control::generate_password() {
                 Ok(pw) => {
-                    if self.update_config_file("server.ws_password", |content| {
+                    self.state.server_config.ws_password = Some(pw.clone());
+                    if !self.update_config_file("server.ws_password", |content| {
                         crate::config::upsert_section_value(
                             content,
                             "server",
@@ -95,7 +96,11 @@ impl App {
                             &format!("\"{pw}\""),
                         )
                     }) {
-                        self.state.server_config.ws_password = Some(pw);
+                        self.state.config_diagnostic =
+                            Some("failed to save ws-server password to config.toml".to_string());
+                        self.config_diagnostic_deadline =
+                            Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+                        return;
                     }
                 }
                 Err(err) => {
@@ -114,7 +119,8 @@ impl App {
             match crate::ws_transport::tls::ensure_default_cert_and_read_fingerprint() {
                 Ok(fp) => {
                     if self.state.server_config.ws_fingerprint.is_none() {
-                        if self.update_config_file("server.ws_fingerprint", |content| {
+                        self.state.server_config.ws_fingerprint = Some(fp.clone());
+                        if !self.update_config_file("server.ws_fingerprint", |content| {
                             crate::config::upsert_section_value(
                                 content,
                                 "server",
@@ -122,7 +128,14 @@ impl App {
                                 &format!("\"{fp}\""),
                             )
                         }) {
-                            self.state.server_config.ws_fingerprint = Some(fp);
+                            self.state.config_diagnostic = Some(
+                                "failed to save ws-server TLS fingerprint to config.toml"
+                                    .to_string(),
+                            );
+                            self.config_diagnostic_deadline = Some(
+                                std::time::Instant::now() + std::time::Duration::from_secs(5),
+                            );
+                            return;
                         }
                     }
                 }
@@ -141,16 +154,16 @@ impl App {
         let password = self.state.server_config.ws_password.clone();
         let tls = self.state.server_config.ws_tls;
 
+        if enabled && password.is_none() {
+            self.state.config_diagnostic =
+                Some("ws-server requires a password before it can start".to_string());
+            self.config_diagnostic_deadline =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+            return;
+        }
+
         let process_outcome = if enabled {
-            crate::ws_transport::control::start(port, password.as_deref(), tls)
-                .map(|_| ())
-                .or_else(|err| {
-                    if err.kind() == std::io::ErrorKind::AlreadyExists {
-                        Ok(())
-                    } else {
-                        Err(err)
-                    }
-                })
+            crate::ws_transport::control::restart(port, password.as_deref(), tls).map(|_| ())
         } else {
             crate::ws_transport::control::stop().map(|_| ())
         };
@@ -166,10 +179,13 @@ impl App {
         }
 
         self.state.server_config.ws_enabled = enabled;
-        if self.update_config_file("server.ws_enabled", |content| {
+        if !self.update_config_file("server.ws_enabled", |content| {
             crate::config::upsert_section_bool(content, "server", "ws_enabled", enabled)
         }) {
-            self.apply_config_from_disk(false);
+            self.state.config_diagnostic =
+                Some("failed to save ws-server enabled state to config.toml".to_string());
+            self.config_diagnostic_deadline =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
         }
     }
 
@@ -182,16 +198,21 @@ impl App {
         } else {
             self.state.server_config.ws_port = port;
         }
-        if self.update_config_file("server.ws_port", |content| {
+        if !self.update_config_file("server.ws_port", |content| {
             crate::config::upsert_section_value(content, "server", "ws_port", &port.to_string())
         }) {
-            self.apply_config_from_disk(false);
+            self.state.config_diagnostic =
+                Some("failed to save ws-server port to config.toml".to_string());
+            self.config_diagnostic_deadline =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+            return;
         }
-        if crate::ws_transport::control::is_running() {
-            let _ = crate::ws_transport::control::stop();
+        if self.state.server_config.ws_enabled {
             let password = self.state.server_config.ws_password.clone();
             let tls = self.state.server_config.ws_tls;
-            if let Err(err) = crate::ws_transport::control::start(port, password.as_deref(), tls) {
+            if let Err(err) =
+                crate::ws_transport::control::restart(port, password.as_deref(), tls)
+            {
                 self.state.config_diagnostic =
                     Some(format!("ws-server restart on port {port}: {err}"));
                 self.config_diagnostic_deadline =

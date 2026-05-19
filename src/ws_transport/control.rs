@@ -8,6 +8,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use base64::Engine as _;
 
@@ -49,6 +50,14 @@ pub fn is_running() -> bool {
     current_pid().is_some()
 }
 
+/// Stop any running gateway and start a fresh one with the given settings.
+pub fn restart(port: u16, password: Option<&str>, tls: bool) -> io::Result<u32> {
+    let _ = stop();
+    // Give the old process a moment to release the listening port.
+    std::thread::sleep(Duration::from_millis(150));
+    start(port, password, tls)
+}
+
 /// Spawn a detached `herdr ws-server` process logging to `data_dir()/ws-server.log`.
 /// Returns an error if a server is already running or the spawn fails.
 pub fn start(port: u16, password: Option<&str>, tls: bool) -> io::Result<u32> {
@@ -56,6 +65,13 @@ pub fn start(port: u16, password: Option<&str>, tls: bool) -> io::Result<u32> {
         return Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
             "ws-server is already running",
+        ));
+    }
+
+    if password.is_none() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "ws-server requires a password; configure [server] ws_password or enable from Settings",
         ));
     }
 
@@ -79,6 +95,10 @@ pub fn start(port: u16, password: Option<&str>, tls: bool) -> io::Result<u32> {
     if tls {
         command.arg("--tls");
     }
+
+    eprintln!(
+        "herdr: spawning ws-server (port={port}, tls={tls}, password=configured)"
+    );
 
     use std::os::unix::process::CommandExt;
     command

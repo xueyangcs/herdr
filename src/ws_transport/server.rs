@@ -315,7 +315,20 @@ async fn handle_tcp(
     eprintln!("herdr ws-server: connection from {peer}");
 
     if let Some(acceptor) = tls_acceptor {
-        let tls = acceptor.accept(tcp).await?;
+        let tls = acceptor.accept(tcp).await.map_err(|err| {
+            let msg = err.to_string();
+            if msg.contains("InvalidContentType") || msg.contains("UnexpectedMessage") {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "{msg} — client likely used ws:// (plain) against a wss:// port; \
+                         use `herdr --remote wss://...` with `--fingerprint`"
+                    ),
+                )
+            } else {
+                io::Error::other(msg)
+            }
+        })?;
         let ws = accept_hdr_async(tls, PasswordCheck(config.password.clone()))
             .await
             .map_err(ws_to_io)?;
