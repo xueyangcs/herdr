@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/http-ws-transport
+      - stable/wss-transport
 
 permissions:
   contents: read
