@@ -173,7 +173,8 @@ async fn connect_tls(request: Request<()>, config: &WsBridgeConfig) -> io::Resul
     let host = uri
         .host()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "wss URL is missing a host"))?;
-    let port = uri.port_u16().unwrap_or(443);
+    // herdr ws-server defaults to 8090, not 443; a bare wss://host often hit the wrong port.
+    let port = uri.port_u16().unwrap_or(8090);
     let addr = format!("{host}:{port}");
 
     let tcp = TcpStream::connect(&addr).await.map_err(|e| {
@@ -196,8 +197,8 @@ async fn connect_tls(request: Request<()>, config: &WsBridgeConfig) -> io::Resul
     let tls_stream = connector.connect(server_name, tcp).await.map_err(|e| {
         let msg = e.to_string();
         let hint = if msg.contains("InvalidContentType") || msg.contains("UnexpectedMessage") {
-            ". The server may be listening with ws:// (no --tls) while you used wss://; \
-             confirm ws-server.log shows `listening on wss://` and `auth: password`"
+            ". Often the URL port is wrong (use wss://host:8090 if ws-server uses 8090), \
+             or the server is on ws:// without --tls; check ws-server.log for `listening on wss://`"
         } else if msg.contains("fingerprint mismatch") {
             ". Re-copy --fingerprint from the server after restarting ws-server"
         } else {
@@ -350,6 +351,16 @@ mod tests {
         let cfg = parse_args(&args).expect("parse");
         assert_eq!(cfg.password.as_deref(), Some("secret"));
         assert_eq!(cfg.fingerprint.as_deref(), Some("SHA256:abc="));
+    }
+
+    #[test]
+    fn wss_url_without_port_defaults_to_ws_server_port() {
+        let req: Request<()> = "wss://example.test"
+            .into_client_request()
+            .expect("request");
+        let uri = req.uri();
+        let port = uri.port_u16().unwrap_or(8090);
+        assert_eq!(port, 8090);
     }
 
     #[test]
