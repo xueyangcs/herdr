@@ -1,7 +1,5 @@
 use bytes::Bytes;
-use crossterm::event::{
-    KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
-};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Direction, Rect};
 use tracing::warn;
 
@@ -180,10 +178,9 @@ impl AppState {
                         .unwrap_or(ModalAction::Cancel);
                     let key = match action {
                         ModalAction::Save => KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
-                        ModalAction::Clear => KeyEvent::new(
-                            KeyCode::Char('c'),
-                            KeyModifiers::CONTROL,
-                        ),
+                        ModalAction::Clear => {
+                            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)
+                        }
                         ModalAction::Cancel => KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()),
                         _ => return None,
                     };

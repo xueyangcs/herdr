@@ -311,9 +311,7 @@ fn main() -> io::Result<()> {
         println!("Usage: herdr [options]");
         println!("       herdr --session <name> [options]");
         println!("       herdr --remote <ssh-target> [--session <name>]");
-        println!(
-            "       herdr --remote <ws://host:port> [--password <pw>] [--fingerprint <fp>]"
-        );
+        println!("       herdr --remote <ws://host:port> [--password <pw>] [--fingerprint <fp>]");
         println!(
             "       herdr --remote <wss://host:port> [--ws-pubkey-auth] [--ws-identity <key>]"
         );

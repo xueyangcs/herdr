@@ -968,10 +968,7 @@ impl App {
             }
             Mode::SettingsServerPort => {
                 if let Some(crate::app::input::SettingsAction::SaveServerPort(port)) =
-                    crate::app::input::handle_settings_server_port_key(
-                        &mut self.state,
-                        key_event,
-                    )
+                    crate::app::input::handle_settings_server_port_key(&mut self.state, key_event)
                 {
                     self.save_ws_server_port(port);
                 }

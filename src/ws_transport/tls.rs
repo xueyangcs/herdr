@@ -113,13 +113,12 @@ fn generate_and_save(cert_path: &Path, key_path: &Path) -> io::Result<()> {
         fs::create_dir_all(parent)?;
     }
     // Include localhost + loopback IP so clients can use hostnames or 127.0.0.1.
-    let CertifiedKey { cert, signing_key } =
-        generate_simple_self_signed(vec![
-            "herdr-ws".to_string(),
-            "localhost".to_string(),
-            "127.0.0.1".to_string(),
-        ])
-        .map_err(|e| io::Error::other(format!("cert generation failed: {e}")))?;
+    let CertifiedKey { cert, signing_key } = generate_simple_self_signed(vec![
+        "herdr-ws".to_string(),
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+    ])
+    .map_err(|e| io::Error::other(format!("cert generation failed: {e}")))?;
 
     fs::write(cert_path, cert.pem())?;
     fs::write(key_path, signing_key.serialize_pem())?;

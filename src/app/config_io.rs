@@ -211,8 +211,7 @@ impl App {
         }
         if self.state.server_config.enabled {
             if self.state.server_config.tls {
-                if let Ok(fp) =
-                    crate::ws_transport::tls::ensure_default_cert_and_read_fingerprint()
+                if let Ok(fp) = crate::ws_transport::tls::ensure_default_cert_and_read_fingerprint()
                 {
                     self.state.server_config.fingerprint = Some(fp.clone());
                     let _ = self.update_config_file("server.fingerprint", |content| {
@@ -227,8 +226,7 @@ impl App {
             }
             let password = self.state.server_config.password.clone();
             let tls = self.state.server_config.tls;
-            if let Err(err) =
-                crate::ws_transport::control::restart(port, password.as_deref(), tls)
+            if let Err(err) = crate::ws_transport::control::restart(port, password.as_deref(), tls)
             {
                 self.state.config_diagnostic =
                     Some(format!("ws-server restart on port {port}: {err}"));

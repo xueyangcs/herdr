@@ -277,12 +277,7 @@ pub fn persist_server_password(password: &str) -> std::io::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
-    let updated = upsert_section_value(
-        &existing,
-        "server",
-        "password",
-        &format!("\"{password}\""),
-    );
+    let updated = upsert_section_value(&existing, "server", "password", &format!("\"{password}\""));
     std::fs::write(&path, updated)
 }
 

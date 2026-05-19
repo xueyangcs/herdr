@@ -25,7 +25,11 @@ pub(crate) const SERVER_IDX_OFF: usize = 1;
 pub(crate) const SERVER_IDX_PORT: usize = 2;
 
 pub(crate) fn server_settings_item_count(config: &ServerConfig) -> usize {
-    if config.enabled { 3 } else { 2 }
+    if config.enabled {
+        3
+    } else {
+        2
+    }
 }
 
 fn server_settings_description() -> String {

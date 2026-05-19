@@ -11,11 +11,11 @@ use std::sync::Arc;
 
 use futures_util::SinkExt as _;
 use futures_util::StreamExt as _;
-use tokio_tungstenite::tungstenite::http::Request;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::Request;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{client_async, MaybeTlsStream};
 use tracing::debug;
@@ -199,9 +199,9 @@ async fn connect_tls(request: Request<()>, config: &WsBridgeConfig) -> io::Resul
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
 
     let uri = request.uri();
-    let host = uri.host().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "wss URL is missing a host")
-    })?;
+    let host = uri
+        .host()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "wss URL is missing a host"))?;
     let port = uri.port_u16().unwrap_or(443);
     let addr = format!("{host}:{port}");
 

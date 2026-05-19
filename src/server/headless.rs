@@ -2207,9 +2207,7 @@ pub fn run_server() -> io::Result<()> {
                     if let Err(err) = crate::config::persist_server_password(&pw) {
                         warn!(error = %err, "could not persist generated ws-server password");
                     }
-                    info!(
-                        "auto-generated ws-server password (see config.toml [server].password)"
-                    );
+                    info!("auto-generated ws-server password (see config.toml [server].password)");
                     Some(pw)
                 }
                 Err(err) => {
@@ -2228,9 +2226,7 @@ pub fn run_server() -> io::Result<()> {
                 }
             }
             None => {
-                warn!(
-                    "ws-server not started: no password available (set [server] password)"
-                );
+                warn!("ws-server not started: no password available (set [server] password)");
             }
         }
     }

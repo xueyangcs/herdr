@@ -31,18 +31,16 @@ mod settings;
 mod sidebar;
 mod terminal;
 
+use self::modal::{
+    modal_action_from_key, ModalAction, ONBOARDING_WELCOME_ACTIONS, RELEASE_NOTES_ACTIONS,
+};
 pub(crate) use self::{
     modal::{
         handle_confirm_close_key, handle_context_menu_key, handle_global_menu_key,
         handle_keybind_help_key, handle_rename_key, handle_resize_key,
     },
     navigate::terminal_direct_navigation_action,
-    settings::{
-        handle_settings_server_port_key, open_settings, SettingsAction,
-    },
-};
-use self::modal::{
-    modal_action_from_key, ModalAction, ONBOARDING_WELCOME_ACTIONS, RELEASE_NOTES_ACTIONS,
+    settings::{handle_settings_server_port_key, open_settings, SettingsAction},
 };
 use super::state::{AppState, Mode};
 use super::App;
