@@ -41,11 +41,8 @@ pub(crate) use self::{
         handle_settings_server_port_key, open_settings, SettingsAction,
     },
 };
-use self::{
-    modal::{
-        modal_action_from_key, ModalAction, ONBOARDING_WELCOME_ACTIONS, RELEASE_NOTES_ACTIONS,
-    },
-    settings::SettingsAction,
+use self::modal::{
+    modal_action_from_key, ModalAction, ONBOARDING_WELCOME_ACTIONS, RELEASE_NOTES_ACTIONS,
 };
 use super::state::{AppState, Mode};
 use super::App;
